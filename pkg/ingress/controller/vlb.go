@@ -213,37 +213,17 @@ func (c *VLBProvider) DeleteLoadbalancer(con *Controller, ing *nwv1.Ingress) err
 
 		for pathIndex, _ := range rule.HTTP.Paths {
 			pairName := fmt.Sprintf("%s_r%d_p%d", lb_prefix_name, ruleIndex, pathIndex)
-			pol, err := c.FindPolicyByName(lb.UUID, lis.ID, pairName)
+			_, err := c.ensurePolicy(lb.UUID, lis.ID, pairName, nil, true)
 			if err != nil {
-				if err == errors.ErrNotFound {
-					logrus.Infof("policy not found: %s, maybe deleted", pairName)
-				} else {
-					logrus.Errorln("error when find policy by name", err)
-					return err
-				}
-			}
-			err = c.api.DeletePolicy(c.vLBSC, c.extraInfo.ProjectID, lb.UUID, lis.ID, pol.UUID)
-			if err != nil {
-				logrus.Errorln("error when delete policy", err)
+				logrus.Errorln("error when ensure policy", err)
 				return err
 			}
-			c.WaitForLBActive(lbID)
 
-			_pool, err := c.FindPoolByName(lb.UUID, pairName)
+			_, err = c.ensurePool(lb.UUID, pairName, true)
 			if err != nil {
-				if err == errors.ErrNotFound {
-					logrus.Infof("pool not found: %s, maybe deleted", pairName)
-				} else {
-					logrus.Errorln("error when find pool by name", err)
-					return err
-				}
-			}
-			err = c.api.DeletePool(c.vLBSC, c.extraInfo.ProjectID, lb.UUID, _pool.UUID)
-			if err != nil {
-				logrus.Errorln("error when delete pool", err)
+				logrus.Errorln("error when ensure pool", err)
 				return err
 			}
-			c.WaitForLBActive(lbID)
 		}
 	}
 	return nil
@@ -282,7 +262,7 @@ func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingr
 
 	// default pool
 	// add default backend to it if specified .......................................................
-	defaultPool, err := c.ensurePool(lb.UUID, consts.DEFAULT_NAME_DEFAULT_POOL)
+	defaultPool, err := c.ensurePool(lb.UUID, consts.DEFAULT_NAME_DEFAULT_POOL, false)
 	if err != nil {
 		logrus.Errorln("error when ensure default pool", err)
 		return nil, err
@@ -298,7 +278,7 @@ func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingr
 		}
 		listenerOpts.DefaultPoolId = defaultPool.UUID
 
-		lis, err := c.ensureListener(lb.UUID, listenerOpts)
+		lis, err := c.ensureListener(lb.UUID, listenerOpts.ListenerName, listenerOpts, false)
 		if err != nil {
 			logrus.Errorln("error when ensure listener:", listenerOpts.ListenerName, err)
 			return nil, err
@@ -306,7 +286,7 @@ func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingr
 		logrus.Infof("listener: %v", lis)
 
 		for pathIndex, path := range rule.HTTP.Paths {
-			poolName := fmt.Sprintf("%s_r%d_p%d", lb_prefix_name, ruleIndex, pathIndex)
+			pairName := fmt.Sprintf("%s_r%d_p%d", lb_prefix_name, ruleIndex, pathIndex)
 
 			serviceName := fmt.Sprintf("%s/%s", ing.ObjectMeta.Namespace, path.Backend.Service.Name)
 			klog.Infof("serviceName: %v", serviceName)
@@ -331,7 +311,7 @@ func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingr
 				})
 			}
 
-			newPool, err := c.ensurePool(lb.UUID, poolName)
+			newPool, err := c.ensurePool(lb.UUID, pairName, false)
 			if err != nil {
 				logrus.Errorln("error when ensure pool", err)
 				return nil, err
@@ -359,12 +339,12 @@ func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingr
 
 			// create policy
 			policyOpts := &policy.CreateOptsBuilder{
-				Name:           poolName,
+				Name:           pairName,
 				Action:         policy.PolicyOptsActionOptREDIRECTTOPOOL,
 				RedirectPoolID: newPool.UUID,
 				Rules:          newRules,
 			}
-			_, err = c.ensurePolicy(lb.UUID, lis.ID, policyOpts)
+			_, err = c.ensurePolicy(lb.UUID, lis.ID, pairName, policyOpts, false)
 			if err != nil {
 				logrus.Errorln("error when ensure policy", err)
 				return nil, err
@@ -376,37 +356,17 @@ func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingr
 			if len(oldIng.Spec.Rules[ruleIndex].HTTP.Paths) > len(rule.HTTP.Paths) {
 				for i := len(rule.HTTP.Paths); i < len(oldIng.Spec.Rules[ruleIndex].HTTP.Paths); i++ {
 					pairName := fmt.Sprintf("%s_r%d_p%d", lb_prefix_name, ruleIndex, i)
-					pol, err := c.FindPolicyByName(lb.UUID, lis.ID, pairName)
+					_, err := c.ensurePolicy(lb.UUID, lis.ID, pairName, nil, true)
 					if err != nil {
-						if err == errors.ErrNotFound {
-							logrus.Infof("policy not found: %s, maybe deleted", pairName)
-						} else {
-							logrus.Errorln("error when find policy by name", err)
-							return nil, err
-						}
-					}
-					err = c.api.DeletePolicy(c.vLBSC, c.extraInfo.ProjectID, lb.UUID, lis.ID, pol.UUID)
-					if err != nil {
-						logrus.Errorln("error when delete policy", err)
+						logrus.Errorln("error when ensure policy", err)
 						return nil, err
 					}
-					c.WaitForLBActive(lbID)
 
-					_pool, err := c.FindPoolByName(lb.UUID, pairName)
+					_, err = c.ensurePool(lb.UUID, pairName, true)
 					if err != nil {
-						if err == errors.ErrNotFound {
-							logrus.Infof("pool not found: %s, maybe deleted", pairName)
-						} else {
-							logrus.Errorln("error when find pool by name", err)
-							return nil, err
-						}
-					}
-					err = c.api.DeletePool(c.vLBSC, c.extraInfo.ProjectID, lb.UUID, _pool.UUID)
-					if err != nil {
-						logrus.Errorln("error when delete pool", err)
+						logrus.Errorln("error when ensure pool", err)
 						return nil, err
 					}
-					c.WaitForLBActive(lbID)
 				}
 			}
 		}
@@ -432,37 +392,17 @@ func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingr
 
 			for pathIndex, _ := range rule.HTTP.Paths {
 				pairName := fmt.Sprintf("%s_r%d_p%d", lb_prefix_name, ruleIndex, pathIndex)
-				pol, err := c.FindPolicyByName(lb.UUID, lis.ID, pairName)
+				_, err := c.ensurePolicy(lb.UUID, lis.ID, pairName, nil, true)
 				if err != nil {
-					if err == errors.ErrNotFound {
-						logrus.Infof("policy not found: %s, maybe deleted", pairName)
-					} else {
-						logrus.Errorln("error when find policy by name", err)
-						return nil, err
-					}
-				}
-				err = c.api.DeletePolicy(c.vLBSC, c.extraInfo.ProjectID, lb.UUID, lis.ID, pol.UUID)
-				if err != nil {
-					logrus.Errorln("error when delete policy", err)
+					logrus.Errorln("error when ensure policy", err)
 					return nil, err
 				}
-				c.WaitForLBActive(lbID)
 
-				_pool, err := c.FindPoolByName(lb.UUID, pairName)
+				_, err = c.ensurePool(lb.UUID, pairName, true)
 				if err != nil {
-					if err == errors.ErrNotFound {
-						logrus.Infof("pool not found: %s, maybe deleted", pairName)
-					} else {
-						logrus.Errorln("error when find pool by name", err)
-						return nil, err
-					}
-				}
-				err = c.api.DeletePool(c.vLBSC, c.extraInfo.ProjectID, lb.UUID, _pool.UUID)
-				if err != nil {
-					logrus.Errorln("error when delete pool", err)
+					logrus.Errorln("error when ensure pool", err)
 					return nil, err
 				}
-				c.WaitForLBActive(lbID)
 			}
 		}
 
@@ -510,12 +450,16 @@ func (c *VLBProvider) setUpPortalInfo() {
 	c.extraInfo = extraInfo
 }
 
-func (c *VLBProvider) ensurePool(lbID, poolName string) (*lObjects.Pool, error) {
+func (c *VLBProvider) ensurePool(lbID, poolName string, isDelete bool) (*lObjects.Pool, error) {
 	klog.Infof("------------ ensurePool: %s", poolName)
 	// c.WaitForLBActive(lbID) // ..................................................
 	pool, err := c.FindPoolByName(lbID, poolName)
 	if err != nil {
 		if err == errors.ErrNotFound {
+			if isDelete {
+				logrus.Infof("pool not found: %s, maybe deleted", poolName)
+				return nil, nil
+			}
 			newPoolOpts := consts.OPT_POOL_DEFAULT
 			newPoolOpts.PoolName = poolName
 			newPool, err := c.api.CreatePool(c.vLBSC, c.extraInfo.ProjectID, lbID, newPoolOpts)
@@ -526,6 +470,13 @@ func (c *VLBProvider) ensurePool(lbID, poolName string) (*lObjects.Pool, error) 
 			pool = newPool
 		} else {
 			logrus.Errorln("error when find pool", err)
+			return nil, err
+		}
+	}
+	if isDelete {
+		err := c.api.DeletePool(c.vLBSC, c.extraInfo.ProjectID, lbID, pool.UUID)
+		if err != nil {
+			logrus.Errorln("error when delete pool", err)
 			return nil, err
 		}
 	}
@@ -577,12 +528,17 @@ func (c *VLBProvider) ensurePoolMember(lbID, poolID string, members []pool.Membe
 	return nil, nil
 }
 
-func (c *VLBProvider) ensureListener(lbID string, listenerOpts listener.CreateOpts) (*lObjects.Listener, error) {
+func (c *VLBProvider) ensureListener(lbID, lisName string, listenerOpts listener.CreateOpts, isDelete bool) (*lObjects.Listener, error) {
 	klog.Infof("------------ ensureListener ----------")
-	lis, err := c.FindListenerByName(lbID, listenerOpts.ListenerName)
+	lis, err := c.FindListenerByName(lbID, lisName)
 	if err != nil {
 		if err == errors.ErrNotFound {
+			if isDelete {
+				logrus.Infof("listener not found: %s, maybe deleted", lisName)
+				return nil, nil
+			}
 			// create listener point to default pool
+			listenerOpts.ListenerName = lisName
 			listener, err := c.api.CreateListener(c.vLBSC, c.extraInfo.ProjectID, lbID, &listenerOpts)
 			if err != nil {
 				logrus.Fatal("error when create listener", err)
@@ -594,16 +550,26 @@ func (c *VLBProvider) ensureListener(lbID string, listenerOpts listener.CreateOp
 			return nil, err
 		}
 	}
+	if isDelete {
+		err := c.api.DeleteListener(c.vLBSC, c.extraInfo.ProjectID, lbID, lis.ID)
+		if err != nil {
+			logrus.Errorln("error when delete listener", err)
+			return nil, err
+		}
+	}
 	c.WaitForLBActive(lbID)
 	return lis, nil
 }
 
-func (c *VLBProvider) ensurePolicy(lbID, listenerID string, policyOpt *policy.CreateOptsBuilder) (*lObjects.Policy, error) {
-	klog.Infof("------------ ensurePolicy: %s", policyOpt.Name)
-	pol, err := c.FindPolicyByName(lbID, listenerID, policyOpt.Name)
+func (c *VLBProvider) ensurePolicy(lbID, listenerID, policyName string, policyOpt *policy.CreateOptsBuilder, isDelete bool) (*lObjects.Policy, error) {
+	klog.Infof("------------ ensurePolicy: %s", policyName)
+	pol, err := c.FindPolicyByName(lbID, listenerID, policyName)
 	if err != nil {
 		if err == errors.ErrNotFound {
-			klog.Infof("opt", policyOpt.Rules)
+			if isDelete {
+				logrus.Infof("policy not found: %s, maybe deleted", policyName)
+				return nil, nil
+			}
 			newPolicy, err := c.api.CreatePolicy(c.vLBSC, c.extraInfo.ProjectID, lbID, listenerID, policyOpt)
 			if err != nil {
 				logrus.Fatal("error when create policy", err)
@@ -612,6 +578,12 @@ func (c *VLBProvider) ensurePolicy(lbID, listenerID string, policyOpt *policy.Cr
 			pol = newPolicy
 		} else {
 			logrus.Errorln("error when find policy", err)
+			return nil, err
+		}
+	} else if isDelete {
+		err := c.api.DeletePolicy(c.vLBSC, c.extraInfo.ProjectID, lbID, listenerID, pol.UUID)
+		if err != nil {
+			logrus.Errorln("error when delete policy", err)
 			return nil, err
 		}
 	} else {
@@ -663,11 +635,11 @@ func (c *VLBProvider) ensurePolicy(lbID, listenerID string, policyOpt *policy.Cr
 		}
 	}
 	c.WaitForLBActive(lbID)
-	pol, err = c.api.GetPolicy(c.vLBSC, c.extraInfo.ProjectID, lbID, listenerID, pol.UUID)
-	if err != nil {
-		logrus.Fatal("error when get policy", err)
-		return nil, err
-	}
+	// pol, err = c.api.GetPolicy(c.vLBSC, c.extraInfo.ProjectID, lbID, listenerID, pol.UUID)
+	// if err != nil {
+	// 	logrus.Fatal("error when get policy", err)
+	// 	return nil, err
+	// }
 	return pol, nil
 }
 

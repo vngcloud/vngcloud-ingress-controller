@@ -41,7 +41,7 @@ func (c *API) ListLBBySubnetID(vSC *client.ServiceClient, projectID, subnetID st
 	return resp, err
 }
 
-func (c *API) GetLB(vSC *client.ServiceClient, lbID, projectID string) (*lObjects.LoadBalancer, error) {
+func (c *API) GetLB(vSC *client.ServiceClient, projectID, lbID string) (*lObjects.LoadBalancer, error) {
 	// logrus.Infoln("*****API__GetLB: ", "lbID: ", lbID, "projectID: ", projectID)
 	opt := &loadbalancer.GetOpts{}
 	opt.ProjectID = projectID
@@ -71,8 +71,19 @@ func (c *API) CreateLB(vSC *client.ServiceClient, name, packageId, subnetID, pro
 	return resp, err
 }
 
+func (c *API) DeleteLB(vSC *client.ServiceClient, projectID, lbID string) error {
+	logrus.Infoln("*****API__DeleteLB: ", "lbID: ", lbID, "projectID: ", projectID)
+	opt := &loadbalancer.DeleteOpts{}
+	opt.ProjectID = projectID
+	opt.LoadBalancerID = lbID
+
+	err := loadbalancer.Delete(vSC, opt)
+	logrus.Infoln("*****API__DeleteLB: ", "err: ", err)
+	return err
+}
+
 // POOL
-func (c *API) CreatePool(vSC *client.ServiceClient, lbID, projectID string, opt pool.CreateOpts) (*lObjects.Pool, error) {
+func (c *API) CreatePool(vSC *client.ServiceClient, projectID, lbID string, opt pool.CreateOpts) (*lObjects.Pool, error) {
 	logrus.Infoln("*****API__CreatePool: ", "lbID: ", lbID, "projectID: ", projectID)
 	opt.ProjectID = projectID
 	opt.LoadBalancerID = lbID
@@ -82,7 +93,7 @@ func (c *API) CreatePool(vSC *client.ServiceClient, lbID, projectID string, opt 
 	return resp, err
 }
 
-func (c *API) ListPoolOfLB(vSC *client.ServiceClient, lbID, projectID string) ([]*lObjects.Pool, error) {
+func (c *API) ListPoolOfLB(vSC *client.ServiceClient, projectID, lbID string) ([]*lObjects.Pool, error) {
 	// logrus.Infoln("*****API__ListPool: ", "lbID: ", lbID, "projectID: ", projectID)
 	opt := &pool.ListPoolsBasedLoadBalancerOpts{}
 	opt.ProjectID = projectID
@@ -144,7 +155,7 @@ func (c *API) DeletePool(vSC *client.ServiceClient, projectID, lbID, poolID stri
 }
 
 // LISTENER
-func (c *API) CreateListener(vSC *client.ServiceClient, lbID, projectID string, opt *listener.CreateOpts) (*lObjects.Listener, error) {
+func (c *API) CreateListener(vSC *client.ServiceClient, projectID, lbID string, opt *listener.CreateOpts) (*lObjects.Listener, error) {
 	logrus.Infoln("*****API__CreateListener: ", "lbID: ", lbID, "projectID: ", projectID)
 	opt.ProjectID = projectID
 	opt.LoadBalancerID = lbID
@@ -153,7 +164,7 @@ func (c *API) CreateListener(vSC *client.ServiceClient, lbID, projectID string, 
 	return resp, err
 }
 
-func (c *API) ListListenerOfLB(vSC *client.ServiceClient, lbID, projectID string) ([]*lObjects.Listener, error) {
+func (c *API) ListListenerOfLB(vSC *client.ServiceClient, projectID, lbID string) ([]*lObjects.Listener, error) {
 	// logrus.Infoln("*****API__ListListenerOfLB: ", "lbID: ", lbID, "projectID: ", projectID)
 	opt := &listener.GetBasedLoadBalancerOpts{}
 	opt.ProjectID = projectID
@@ -176,7 +187,7 @@ func (c *API) DeleteListener(vSC *client.ServiceClient, projectID, lbID, listene
 
 // POLICY
 func (c *API) CreatePolicy(vSC *client.ServiceClient, projectID, lbID, listenerID string, opt *policy.CreateOptsBuilder) (*lObjects.Policy, error) {
-	logrus.Infoln("*****API__CreatePolicy: ", "lbID: ", lbID, "projectID: ", projectID, "listenerID: ", listenerID)
+	logrus.Infoln("*****API__CreatePolicy: ", "lbID: ", lbID, "projectID: ", projectID, "listenerID: ", listenerID, "opt: ", opt)
 	opt.ProjectID = projectID
 	opt.LoadBalancerID = lbID
 	opt.ListenerID = listenerID
@@ -216,6 +227,18 @@ func (c *API) UpdatePolicy(vSC *client.ServiceClient, projectID, lbID, listenerI
 	opt.PolicyID = policyID
 	err := policy.Update(vSC, opt)
 	logrus.Infoln("*****API__UpdatePolicy: ", "err: ", err)
+	return err
+}
+
+func (c *API) DeletePolicy(vSC *client.ServiceClient, projectID, lbID, listenerID, policyID string) error {
+	logrus.Infoln("*****API__DeletePolicy: ", "lbID: ", lbID, "projectID: ", projectID, "listenerID: ", listenerID, "policyID: ", policyID)
+	opt := &policy.DeleteOptsBuilder{}
+	opt.ProjectID = projectID
+	opt.LoadBalancerID = lbID
+	opt.ListenerID = listenerID
+	opt.PolicyID = policyID
+	err := policy.Delete(vSC, opt)
+	logrus.Infoln("*****API__DeletePolicy: ", "err: ", err)
 	return err
 }
 

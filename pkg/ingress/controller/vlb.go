@@ -79,6 +79,59 @@ type VLBProvider struct {
 	api          API
 }
 
+type PoolExpander struct {
+	isInUse bool
+	Name    string
+	UUID    string
+	// Members []lObjects.Member
+	Members []pool.Member
+	// Protocol          string
+	// Description       string
+	// LoadBalanceMethod string
+	// Status            string
+	// Stickiness        bool
+	// TLSEncryption     bool
+}
+
+type PolicyExpander struct {
+	isInUse         bool
+	isHttpsListener bool
+	listenerID      string
+	// shouldForwardToPoolName string
+
+	UUID             string
+	Name             string
+	RedirectPoolID   string
+	RedirectPoolName string
+	Action           policy.PolicyOptsActionOpt
+	L7Rules          []policy.Rule
+	// *lObjects.Policy
+}
+
+type ListenerExpander struct {
+	defaultPoolName string
+	defaultPoolId   string
+	UUID            string
+	listener.CreateOpts
+}
+type IngressInspect struct {
+	PolicyExpander   []*PolicyExpander
+	PoolExpander     []*PoolExpander
+	ListenerExpander []*ListenerExpander
+}
+
+func (ing *IngressInspect) Print() {
+	for _, l := range ing.ListenerExpander {
+		fmt.Println("LISTENER: id:", l.UUID, "defaultPoolName:", l.defaultPoolName, "defaultPoolId:", l.defaultPoolId)
+	}
+	for _, p := range ing.PolicyExpander {
+		fmt.Println("---- POLICY: id:", p.UUID, "name:", p.Name, "redirectPoolName:", p.RedirectPoolName, "redirectPoolId:", p.RedirectPoolID, "action:", p.Action, "l7Rules:", p.L7Rules)
+	}
+	for _, p := range ing.PoolExpander {
+		fmt.Println("++++ POOL: name:", p.Name, "uuid:", p.UUID, "members:", p.Members)
+	}
+}
+
 func (c *VLBProvider) Init() error {
 	c.api = API{}
 	provider, err := vngcloud.NewClient(c.config.Global.IdentityURL)
@@ -181,63 +234,287 @@ func (c *VLBProvider) GetLoadbalancerIDByIngress(ing *nwv1.Ingress) (string, err
 
 func (c *VLBProvider) DeleteLoadbalancer(con *Controller, ing *nwv1.Ingress) error {
 	klog.Infof("----------------- DeleteLoadbalancer(%s/%s) ------------------", ing.Namespace, ing.Name)
-	lb_prefix_name := c.GetResourceName(ing)
-	mapTLS, _ := c.mapHostTLS(ing)
-	lbID, err := c.GetLoadbalancerIDByIngress(ing)
+	lbID, err := c.ensureLoadBalancer(ing)
 	if err != nil {
-		if err == errors.ErrLoadBalancerIDNotFoundAnnotation {
-			logrus.Infof("Not found lbID in annotation, maybe already deleted!")
-			return nil
-		}
-		logrus.Errorln("error not handled when list loadbalancer by subnet id", err)
+		logrus.Errorln("error when ensure loadbalancer", err)
 		return err
 	}
-	if lbID == "" {
-		logrus.Infof("Not found lbID, maybe already deleted!")
-		return nil
-	}
-	lb := c.WaitForLBActive(lbID)
 
-	// Delete l7 load balancing rules.
+	oldIngExpander, err := c.InspectIngress(con, ing)
+	if err != nil {
+		logrus.Errorln("error when inspect old ingress", err)
+		return err
+	}
+	newIngExpander, err := c.InspectIngress(con, nil)
+	if err != nil {
+		logrus.Errorln("error when inspect new ingress", err)
+		return err
+	}
+
+	_, err = c.ActionCompareIngress(lbID, oldIngExpander, newIngExpander)
+	if err != nil {
+		logrus.Errorln("error when compare ingress", err)
+		return err
+	}
+	// can delete lb instance here ......................
+	return nil
+}
+
+// /////////////////////////////////// PRIVATE METHOD /////////////////////////////////////////
+func (c *VLBProvider) mapHostTLS(ing *nwv1.Ingress) (map[string]bool, []string) {
+	m := make(map[string]bool)
+	certArr := make([]string, 0)
+	for _, tls := range ing.Spec.TLS {
+		for _, host := range tls.Hosts {
+			certArr = append(certArr, strings.TrimSpace(tls.SecretName))
+			m[host] = true
+		}
+	}
+	return m, certArr
+}
+
+func (c *VLBProvider) InspectCurrentLB(lbID string) (*IngressInspect, error) {
+	expectPolicyName := make([]*PolicyExpander, 0)
+	expectPoolName := make([]*PoolExpander, 0)
+	expectListenerName := make([]*ListenerExpander, 0)
+
+	liss, err := c.api.ListListenerOfLB(c.vLBSC, c.extraInfo.ProjectID, lbID)
+	if err != nil {
+		logrus.Errorln("error when list listener of lb", err)
+		return nil, err
+	}
+	for _, lis := range liss {
+		listenerOpts := consts.OPT_LISTENER_HTTP_DEFAULT
+		if lis.Protocol == "HTTPS" {
+			listenerOpts = consts.OPT_LISTENER_HTTPS_DEFAULT
+		}
+		listenerOpts.DefaultPoolId = lis.DefaultPoolId
+		expectListenerName = append(expectListenerName, &ListenerExpander{
+			UUID:            lis.UUID,
+			defaultPoolName: lis.DefaultPoolName,
+			defaultPoolId:   lis.DefaultPoolId,
+			CreateOpts:      listenerOpts,
+		})
+
+	}
+
+	getPools, err := c.api.ListPoolOfLB(c.vLBSC, c.extraInfo.ProjectID, lbID)
+	if err != nil {
+		logrus.Errorln("error when list pool of lb", err)
+		return nil, err
+	}
+	for _, p := range getPools {
+		poolMembers := make([]pool.Member, 0)
+		for _, m := range p.Members {
+			poolMembers = append(poolMembers, pool.Member{
+				IpAddress:   m.Address,
+				Port:        m.ProtocolPort,
+				Backup:      m.Backup,
+				Weight:      m.Weight,
+				Name:        m.Name,
+				MonitorPort: m.MonitorPort,
+			})
+		}
+		expectPoolName = append(expectPoolName, &PoolExpander{
+			isInUse: false,
+			Name:    p.Name,
+			UUID:    p.UUID,
+			Members: poolMembers,
+		})
+	}
+
+	for _, lis := range liss {
+		pols, err := c.api.ListPolicyOfListener(c.vLBSC, c.extraInfo.ProjectID, lbID, lis.UUID)
+		if err != nil {
+			logrus.Errorln("error when list policy of listener", err)
+			return nil, err
+		}
+		for _, pol := range pols {
+			l7Rules := make([]policy.Rule, 0)
+			for _, r := range pol.L7Rules {
+				l7Rules = append(l7Rules, policy.Rule{
+					CompareType: policy.PolicyOptsCompareTypeOpt(r.CompareType),
+					RuleValue:   r.RuleValue,
+					RuleType:    policy.PolicyOptsRuleTypeOpt(r.RuleType),
+				})
+			}
+			expectPolicyName = append(expectPolicyName, &PolicyExpander{
+				isInUse:          false,
+				listenerID:       lis.UUID,
+				UUID:             pol.UUID,
+				Name:             pol.Name,
+				RedirectPoolID:   pol.RedirectPoolID,
+				RedirectPoolName: pol.RedirectPoolName,
+				Action:           policy.PolicyOptsActionOpt(pol.Action),
+				L7Rules:          l7Rules,
+			})
+		}
+	}
+	return &IngressInspect{
+		PolicyExpander:   expectPolicyName,
+		PoolExpander:     expectPoolName,
+		ListenerExpander: expectListenerName,
+	}, nil
+}
+func (c *VLBProvider) InspectIngress(con *Controller, ing *nwv1.Ingress) (*IngressInspect, error) {
+	if ing == nil {
+		return &IngressInspect{
+			PolicyExpander:   make([]*PolicyExpander, 0),
+			PoolExpander:     make([]*PoolExpander, 0),
+			ListenerExpander: make([]*ListenerExpander, 0),
+		}, nil
+	}
+	klog.Infof("----------------- InspectIngress(%s/%s) ------------------", ing.Namespace, ing.Name)
+	lb_prefix_name := c.GetResourceName(ing)
+	mapTLS, certArr := c.mapHostTLS(ing)
+
+	expectPolicyName := make([]*PolicyExpander, 0)
+	expectPoolName := make([]*PoolExpander, 0)
+	expectListenerName := make([]*ListenerExpander, 0)
+
+	GetPoolExpander := func(service *nwv1.IngressServiceBackend) (*PoolExpander, error) {
+		serviceName := fmt.Sprintf("%s/%s", ing.ObjectMeta.Namespace, service.Name)
+		klog.Infof("serviceName: %v", serviceName)
+		poolName := c.GetPoolName(lb_prefix_name, serviceName, int(service.Port.Number))
+		nodePort, err := con.getServiceNodePort(serviceName, service)
+		if err != nil {
+			klog.Errorf("error when get node port: %v", err)
+			return nil, err
+		}
+		klog.Infof("nodePort: %v", nodePort)
+
+		membersAddr, _ := con.GetNodeMembersAddr()
+		klog.Infof("membersAddr: %v", membersAddr)
+		members := make([]pool.Member, 0)
+		for _, addr := range membersAddr {
+			members = append(members, pool.Member{
+				IpAddress:   addr,
+				Port:        nodePort,
+				Backup:      false,
+				Weight:      1,
+				Name:        addr,
+				MonitorPort: nodePort,
+			})
+		}
+		return &PoolExpander{
+			isInUse: false,
+			Name:    poolName,
+			UUID:    "",
+			Members: members,
+		}, nil
+	}
+
+	// check if have default pool
+	defaultPoolName := ""
+	if ing.Spec.DefaultBackend != nil && ing.Spec.DefaultBackend.Service != nil {
+		defaultPoolExpander, err := GetPoolExpander(ing.Spec.DefaultBackend.Service)
+		if err != nil {
+			logrus.Errorln("error when get default pool expander", err)
+			return nil, err
+		}
+		expectPoolName = append(expectPoolName, defaultPoolExpander)
+		defaultPoolName = defaultPoolExpander.Name
+	}
+
+	isHaveHTTPListener := false
+	isHaveHTTPSListener := false
 	for ruleIndex, rule := range ing.Spec.Rules {
 		_, isHttpsListener := mapTLS[rule.Host]
-		listenerName := consts.DEFAULT_HTTP_LISTENER_NAME
-		if isHttpsListener {
-			listenerName = consts.DEFAULT_HTTPS_LISTENER_NAME
+		if isHttpsListener && !isHaveHTTPSListener {
+			listenerOpts := consts.OPT_LISTENER_HTTPS_DEFAULT
+			listenerOpts.CertificateAuthorities = &certArr
+			listenerOpts.DefaultCertificateAuthority = &certArr[0]
+			listenerOpts.ClientCertificate = consts.PointerOf[string]("")
+			expectListenerName = append(expectListenerName, &ListenerExpander{
+				defaultPoolName: defaultPoolName,
+				CreateOpts:      listenerOpts,
+			})
 		}
-		lis, err := c.FindListenerByName(lb.UUID, listenerName)
-		if err != nil {
-			logrus.Errorln("error when find listener by name", err)
-			return err
+		if !isHttpsListener && !isHaveHTTPListener {
+			expectListenerName = append(expectListenerName, &ListenerExpander{
+				defaultPoolName: defaultPoolName,
+				CreateOpts:      consts.OPT_LISTENER_HTTP_DEFAULT,
+			})
 		}
-		logrus.Infof("listener: %v", lis)
 
-		for pathIndex, _ := range rule.HTTP.Paths {
-			pairName := fmt.Sprintf("%s_r%d_p%d", lb_prefix_name, ruleIndex, pathIndex)
-			_, err := c.ensurePolicy(lb.UUID, lis.ID, pairName, nil, true)
-			if err != nil {
-				logrus.Errorln("error when ensure policy", err)
-				return err
-			}
+		for pathIndex, path := range rule.HTTP.Paths {
+			policyName := c.GetPolicyName(lb_prefix_name, isHttpsListener, ruleIndex, pathIndex)
 
-			_, err = c.ensurePool(lb.UUID, pairName, true)
+			poolExpander, err := GetPoolExpander(path.Backend.Service)
 			if err != nil {
-				logrus.Errorln("error when ensure pool", err)
-				return err
+				logrus.Errorln("error when get pool expander", err)
+				return nil, err
 			}
+			expectPoolName = append(expectPoolName, poolExpander)
+
+			// ensure policy
+			newRules := []policy.Rule{
+				{
+					RuleType:    policy.PolicyOptsRuleTypeOptPATH,
+					CompareType: policy.PolicyOptsCompareTypeOptEQUALS,
+					RuleValue:   path.Path,
+				},
+			}
+			if rule.Host != "" {
+				newRules = append(newRules, policy.Rule{
+					RuleType:    policy.PolicyOptsRuleTypeOptHOSTNAME,
+					CompareType: policy.PolicyOptsCompareTypeOptEQUALS,
+					RuleValue:   rule.Host,
+				})
+			}
+			expectPolicyName = append(expectPolicyName, &PolicyExpander{
+				isHttpsListener:  isHttpsListener,
+				isInUse:          false,
+				UUID:             "",
+				Name:             policyName,
+				RedirectPoolID:   "",
+				RedirectPoolName: poolExpander.Name,
+				Action:           policy.PolicyOptsActionOptREDIRECTTOPOOL,
+				L7Rules:          newRules,
+			})
 		}
 	}
-	return nil
+	return &IngressInspect{
+		PolicyExpander:   expectPolicyName,
+		PoolExpander:     expectPoolName,
+		ListenerExpander: expectListenerName,
+	}, nil
 }
 
 func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingress) (*lObjects.LoadBalancer, error) {
 	klog.Infof("----------------- EnsureLoadBalancer(%s/%s) ------------------", ing.Namespace, ing.Name)
-	lb_prefix_name := c.GetResourceName(ing)
-	mapTLS, certArr := c.mapHostTLS(ing)
+	lbID, err := c.ensureLoadBalancer(ing)
+	if err != nil {
+		logrus.Errorln("error when ensure loadbalancer", err)
+		return nil, err
+	}
+
+	oldIngExpander, err := c.InspectIngress(con, oldIng)
+	if err != nil {
+		logrus.Errorln("error when inspect old ingress", err)
+		return nil, err
+	}
+	newIngExpander, err := c.InspectIngress(con, ing)
+	if err != nil {
+		logrus.Errorln("error when inspect new ingress", err)
+		return nil, err
+	}
+
+	lb, err := c.ActionCompareIngress(lbID, oldIngExpander, newIngExpander)
+	if err != nil {
+		logrus.Errorln("error when compare ingress", err)
+		return nil, err
+	}
+	return lb, nil
+}
+
+// find or create lb
+func (c *VLBProvider) ensureLoadBalancer(ing *nwv1.Ingress) (string, error) {
+
 	lbID, err := c.GetLoadbalancerIDByIngress(ing)
 	if err != nil {
 		if err == errors.ErrLoadBalancerIDNotFoundAnnotation {
-			return nil, err
+			return "", err
 		}
 
 		logrus.WithFields(logrus.Fields{
@@ -256,175 +533,144 @@ func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingr
 			loadbalancer.CreateOptsTypeOptLayer7)
 		if err != nil {
 			klog.Errorf("error when create new lb: %v", err)
-			return nil, err
+			return "", err
 		}
 		lbID = lb.UUID
 	}
+	return lbID, nil
+}
+
+func (c *VLBProvider) ActionCompareIngress(lbID string, oldIngExpander, newIngExpander *IngressInspect) (*lObjects.LoadBalancer, error) {
 	lb := c.WaitForLBActive(lbID)
 
-	// default pool
-	// add default backend to it if specified .......................................................
-	defaultPool, err := c.ensurePool(lb.UUID, consts.DEFAULT_NAME_DEFAULT_POOL, false)
+	curLBExpander, err := c.InspectCurrentLB(lbID)
 	if err != nil {
-		logrus.Errorln("error when ensure default pool", err)
+		logrus.Errorln("error when inspect current lb", err)
 		return nil, err
 	}
-	logrus.Infof("default pool: %v", defaultPool)
+	logrus.Infoln("curLBExpander:")
+	curLBExpander.Print()
 
-	// Add l7 load balancing rules. Only have 2 listener: http and https
-	for ruleIndex, rule := range ing.Spec.Rules {
-		_, isHttpsListener := mapTLS[rule.Host]
-		listenerOpts := consts.OPT_LISTENER_HTTP_DEFAULT
-		if isHttpsListener {
-			listenerOpts = consts.OPT_LISTENER_HTTPS_DEFAULT
-			listenerOpts.CertificateAuthorities = &certArr
-			listenerOpts.DefaultCertificateAuthority = &certArr[0]
-			listenerOpts.ClientCertificate = consts.PointerOf[string]("")
-		}
-		listenerOpts.DefaultPoolId = defaultPool.UUID
+	c.MapIDExpander(oldIngExpander, curLBExpander)
+	logrus.Infoln("oldIngExpander:")
+	oldIngExpander.Print()
 
-		lis, err := c.ensureListener(lb.UUID, listenerOpts.ListenerName, listenerOpts, false)
+	// ensure all from newIngExpander
+	mapPoolNameIndex := make(map[string]int)
+	for poolIndex, ipool := range newIngExpander.PoolExpander {
+		newPool, err := c.ensurePool(lb.UUID, ipool.Name, false)
 		if err != nil {
-			logrus.Errorln("error when ensure listener:", listenerOpts.ListenerName, err)
+			logrus.Errorln("error when ensure pool", err)
 			return nil, err
 		}
-		logrus.Infof("listener: %v", lis)
-
-		for pathIndex, path := range rule.HTTP.Paths {
-			pairName := fmt.Sprintf("%s_r%d_p%d", lb_prefix_name, ruleIndex, pathIndex)
-
-			serviceName := fmt.Sprintf("%s/%s", ing.ObjectMeta.Namespace, path.Backend.Service.Name)
-			klog.Infof("serviceName: %v", serviceName)
-			nodePort, err := con.getServiceNodePort(serviceName, path.Backend.Service)
-			if err != nil {
-				klog.Errorf("error when get node port: %v", err)
+		ipool.UUID = newPool.UUID
+		mapPoolNameIndex[ipool.Name] = poolIndex
+		_, err = c.ensurePoolMember(lb.UUID, newPool.UUID, ipool.Members)
+		if err != nil {
+			logrus.Errorln("error when ensure pool member", err)
+			return nil, err
+		}
+	}
+	mapListenerNameIndex := make(map[string]int)
+	for listenerIndex, ilistener := range newIngExpander.ListenerExpander {
+		poolID := ""
+		if ilistener.defaultPoolName != "" {
+			poolIndex, isHave := mapPoolNameIndex[ilistener.defaultPoolName]
+			if !isHave {
+				logrus.Errorf(".........pool not found in listener: %v", ilistener.defaultPoolName)
 				return nil, err
 			}
-			klog.Infof("nodePort: %v", nodePort)
+			poolID = newIngExpander.PoolExpander[poolIndex].UUID
+		}
+		ilistener.CreateOpts.DefaultPoolId = poolID
 
-			membersAddr, _ := con.GetNodeMembersAddr()
-			klog.Infof("membersAddr: %v", membersAddr)
-			members := make([]pool.Member, 0)
-			for _, addr := range membersAddr {
-				members = append(members, pool.Member{
-					IpAddress:   addr,
-					Port:        nodePort,
-					Backup:      false,
-					Weight:      1,
-					Name:        addr,
-					MonitorPort: nodePort,
-				})
-			}
-
-			newPool, err := c.ensurePool(lb.UUID, pairName, false)
-			if err != nil {
-				logrus.Errorln("error when ensure pool", err)
-				return nil, err
-			}
-			logrus.Infof("pool: %v", newPool)
-			_, err = c.ensurePoolMember(lb.UUID, newPool.UUID, members)
-			if err != nil {
-				logrus.Errorln("error when ensure pool member", err)
-				return nil, err
-			}
-			newRules := []policy.Rule{
-				{
-					RuleType:    policy.PolicyOptsRuleTypeOptPATH,
-					CompareType: policy.PolicyOptsCompareTypeOptEQUALS,
-					RuleValue:   path.Path,
-				},
-			}
-			if rule.Host != "" {
-				newRules = append(newRules, policy.Rule{
-					RuleType:    policy.PolicyOptsRuleTypeOptHOSTNAME,
-					CompareType: policy.PolicyOptsCompareTypeOptEQUALS,
-					RuleValue:   rule.Host,
-				})
-			}
-
-			// create policy
-			policyOpts := &policy.CreateOptsBuilder{
-				Name:           pairName,
-				Action:         policy.PolicyOptsActionOptREDIRECTTOPOOL,
-				RedirectPoolID: newPool.UUID,
-				Rules:          newRules,
-			}
-			_, err = c.ensurePolicy(lb.UUID, lis.ID, pairName, policyOpts, false)
-			if err != nil {
-				logrus.Errorln("error when ensure policy", err)
-				return nil, err
-			}
+		lis, err := c.ensureListener(lb.UUID, ilistener.CreateOpts.ListenerName, ilistener.CreateOpts, false)
+		if err != nil {
+			logrus.Errorln("error when ensure listener:", ilistener.CreateOpts.ListenerName, err)
+			return nil, err
+		}
+		ilistener.UUID = lis.UUID
+		mapListenerNameIndex[ilistener.CreateOpts.ListenerName] = listenerIndex
+	}
+	logrus.Infof("newIngExpander: %v", newIngExpander.PolicyExpander)
+	for _, ipolicy := range newIngExpander.PolicyExpander {
+		// get pool name from redirect pool name
+		poolIndex, isHave := mapPoolNameIndex[ipolicy.RedirectPoolName]
+		if !isHave {
+			logrus.Errorf(".........pool not found in policy: %v", ipolicy.RedirectPoolName)
+			return nil, err
+		}
+		poolID := newIngExpander.PoolExpander[poolIndex].UUID
+		listenerName := consts.DEFAULT_HTTP_LISTENER_NAME
+		if ipolicy.isHttpsListener {
+			listenerName = consts.DEFAULT_HTTPS_LISTENER_NAME
+		}
+		listenerIndex, isHave := mapListenerNameIndex[listenerName]
+		if !isHave {
+			logrus.Errorf("listener index not found: %v", listenerName)
+			return nil, err
+		}
+		listenerID := newIngExpander.ListenerExpander[listenerIndex].UUID
+		if listenerID == "" {
+			logrus.Errorf("listenerID not found: %v", listenerName)
+			return nil, err
 		}
 
-		// delete redundant policy and pool if in oldIng
-		if oldIng != nil && len(oldIng.Spec.Rules) > ruleIndex {
-			if len(oldIng.Spec.Rules[ruleIndex].HTTP.Paths) > len(rule.HTTP.Paths) {
-				for i := len(rule.HTTP.Paths); i < len(oldIng.Spec.Rules[ruleIndex].HTTP.Paths); i++ {
-					pairName := fmt.Sprintf("%s_r%d_p%d", lb_prefix_name, ruleIndex, i)
-					_, err := c.ensurePolicy(lb.UUID, lis.ID, pairName, nil, true)
-					if err != nil {
-						logrus.Errorln("error when ensure policy", err)
-						return nil, err
-					}
-
-					_, err = c.ensurePool(lb.UUID, pairName, true)
-					if err != nil {
-						logrus.Errorln("error when ensure pool", err)
-						return nil, err
-					}
-				}
-			}
+		policyOpts := &policy.CreateOptsBuilder{
+			Name:           ipolicy.Name,
+			Action:         ipolicy.Action,
+			RedirectPoolID: poolID,
+			Rules:          ipolicy.L7Rules,
+		}
+		_, err := c.ensurePolicy(lb.UUID, listenerID, ipolicy.Name, policyOpts, false)
+		if err != nil {
+			logrus.Errorln("error when ensure policy", err)
+			return nil, err
 		}
 	}
 
-	// delete redundant rule if in oldIng
-	if oldIng != nil && len(oldIng.Spec.Rules) > len(ing.Spec.Rules) {
-		klog.Infof("--------------- delete old listener for ingress %s/%s -------------------", oldIng.Namespace, oldIng.Name)
-		mapTLS, _ := c.mapHostTLS(oldIng)
-		// delete old lb
-		for ruleIndex := len(ing.Spec.Rules); ruleIndex < len(oldIng.Spec.Rules); ruleIndex++ {
-			rule := oldIng.Spec.Rules[ruleIndex]
-			_, isHttpsListener := mapTLS[rule.Host]
-			listenerName := consts.DEFAULT_HTTP_LISTENER_NAME
-			if isHttpsListener {
-				listenerName = consts.DEFAULT_HTTPS_LISTENER_NAME
-			}
-			lis, err := c.FindListenerByName(lb.UUID, listenerName)
+	// delete redundant policy and pool if in oldIng
+	// with id from curLBExpander
+	klog.Infof("*************** DELETE REDUNDANT POLICY AND POOL *****************")
+	policyWillUse := make(map[string]int)
+	for policyIndex, pol := range newIngExpander.PolicyExpander {
+		policyWillUse[pol.Name] = policyIndex
+	}
+	logrus.Infof("policyWillUse: %v", policyWillUse)
+	for _, oldIngPolicy := range oldIngExpander.PolicyExpander {
+		_, isPolicyWillUse := policyWillUse[oldIngPolicy.Name]
+		if !isPolicyWillUse {
+			logrus.Warnf("policy not in use: %v, delete", oldIngPolicy.Name)
+			_, err := c.ensurePolicy(lb.UUID, oldIngPolicy.listenerID, oldIngPolicy.Name, nil, true)
 			if err != nil {
-				logrus.Errorln("error when find listener by name", err)
-				return nil, err
+				logrus.Errorln("error when ensure policy", err)
+				// maybe it's already deleted
+				// return nil, err
 			}
-			logrus.Infof("listener: %v", lis)
+		} else {
+			logrus.Infof("policy in use: %v, not delete", oldIngPolicy.Name)
+		}
+	}
 
-			for pathIndex, _ := range rule.HTTP.Paths {
-				pairName := fmt.Sprintf("%s_r%d_p%d", lb_prefix_name, ruleIndex, pathIndex)
-				_, err := c.ensurePolicy(lb.UUID, lis.ID, pairName, nil, true)
-				if err != nil {
-					logrus.Errorln("error when ensure policy", err)
-					return nil, err
-				}
-				_, err = c.ensurePool(lb.UUID, pairName, true)
-				if err != nil {
-					logrus.Errorln("error when ensure pool", err)
-					return nil, err
-				}
+	poolWillUse := make(map[string]bool)
+	for _, pool := range newIngExpander.PoolExpander {
+		poolWillUse[pool.Name] = true
+	}
+	for _, oldIngPool := range oldIngExpander.PoolExpander {
+		_, isPoolWillUse := poolWillUse[oldIngPool.Name]
+		if !isPoolWillUse {
+			logrus.Warnf("pool not in use: %v, delete", oldIngPool.Name)
+			_, err := c.ensurePool(lb.UUID, oldIngPool.Name, true)
+			if err != nil {
+				logrus.Errorln("error when ensure pool", err)
+				// maybe it's already deleted
+				// return nil, err
 			}
+		} else {
+			logrus.Infof("pool in use: %v, not delete", oldIngPool.Name)
 		}
 	}
 	return lb, nil
-}
-
-// /////////////////////////////////// PRIVATE METHOD /////////////////////////////////////////
-func (c *VLBProvider) mapHostTLS(ing *nwv1.Ingress) (map[string]bool, []string) {
-	m := make(map[string]bool)
-	certArr := make([]string, 0)
-	for _, tls := range ing.Spec.TLS {
-		for _, host := range tls.Hosts {
-			certArr = append(certArr, strings.TrimSpace(tls.SecretName))
-			m[host] = true
-		}
-	}
-	return m, certArr
 }
 
 // GetResourceName get Ingress related resource name.
@@ -447,6 +693,12 @@ func (c *VLBProvider) GetResourceName(ing *nwv1.Ingress) string {
 	// 	trim(ing.Name, 10),
 	// 	trim(hash, 10),
 	// )
+}
+func (c *VLBProvider) GetPolicyName(prefix string, mode bool, ruleIndex, pathIndex int) string {
+	return fmt.Sprintf("%s_%t_r%d_p%d", prefix, mode, ruleIndex, pathIndex)
+}
+func (c *VLBProvider) GetPoolName(prefix, serviceName string, port int) string {
+	return fmt.Sprintf("%s_%s_%d", prefix, strings.ReplaceAll(serviceName, "/", "-"), port)
 }
 
 func (c *VLBProvider) setUpPortalInfo() {
@@ -565,7 +817,7 @@ func (c *VLBProvider) ensureListener(lbID, lisName string, listenerOpts listener
 		}
 	}
 	if isDelete {
-		err := c.api.DeleteListener(c.vLBSC, c.extraInfo.ProjectID, lbID, lis.ID)
+		err := c.api.DeleteListener(c.vLBSC, c.extraInfo.ProjectID, lbID, lis.UUID)
 		if err != nil {
 			logrus.Errorln("error when delete listener", err)
 			return nil, err
@@ -577,7 +829,22 @@ func (c *VLBProvider) ensureListener(lbID, lisName string, listenerOpts listener
 
 func (c *VLBProvider) ensurePolicy(lbID, listenerID, policyName string, policyOpt *policy.CreateOptsBuilder, isDelete bool) (*lObjects.Policy, error) {
 	klog.Infof("------------ ensurePolicy: %s", policyName)
-	pol, err := c.FindPolicyByName(lbID, listenerID, policyName)
+	FindPolicyByName := func(lbID, lisID, name string) (*lObjects.Policy, error) {
+		klog.Infof("------------ FindPolicyByName: lbID: %s, lisID: %s, name: %s", lbID, lisID, name)
+		policyArr, err := c.api.ListPolicyOfListener(c.vLBSC, c.extraInfo.ProjectID, lbID, lisID)
+		if err != nil {
+			logrus.Errorln("error when list policy", err)
+			return nil, err
+		}
+		for _, policy := range policyArr {
+			if policy.Name == name {
+				return policy, nil
+			}
+		}
+		return nil, errors.ErrNotFound
+	}
+
+	pol, err := FindPolicyByName(lbID, listenerID, policyName)
 	if err != nil {
 		if err == errors.ErrNotFound {
 			if isDelete {
@@ -705,20 +972,6 @@ func (c *VLBProvider) FindListenerByName(lbID, name string) (*lObjects.Listener,
 	return nil, errors.ErrNotFound
 }
 
-func (c *VLBProvider) FindPolicyByName(lbID, lisID, name string) (*lObjects.Policy, error) {
-	policyArr, err := c.api.ListPolicyOfListener(c.vLBSC, c.extraInfo.ProjectID, lbID, lisID)
-	if err != nil {
-		logrus.Errorln("error when list policy", err)
-		return nil, err
-	}
-	for _, policy := range policyArr {
-		if policy.Name == name {
-			return policy, nil
-		}
-	}
-	return nil, errors.ErrNotFound
-}
-
 func EncodeToValidName(str string) string {
 	// Only letters (a-z, A-Z, 0-9, '_', '.', '-') are allowed.
 	// the other char will repaced by ":{number}:"
@@ -762,4 +1015,46 @@ func HashString(str string) string {
 	// Convert the truncated hash to a hex-encoded string
 	hashString := hex.EncodeToString(truncatedHash)
 	return hashString
+}
+
+func (c *VLBProvider) MapIDExpander(old, cur *IngressInspect) {
+	// map policy
+	mapPolicyIndex := make(map[string]int)
+	for curIndex, curPol := range cur.PolicyExpander {
+		mapPolicyIndex[curPol.Name] = curIndex
+	}
+	for _, oldPol := range old.PolicyExpander {
+		if curIndex, ok := mapPolicyIndex[oldPol.Name]; ok {
+			oldPol.UUID = cur.PolicyExpander[curIndex].UUID
+			oldPol.listenerID = cur.PolicyExpander[curIndex].listenerID
+		} else {
+			logrus.Error("policy not found when map ingress: %v", oldPol)
+		}
+	}
+
+	// map pool
+	mapPoolIndex := make(map[string]int)
+	for curIndex, curPol := range cur.PoolExpander {
+		mapPoolIndex[curPol.Name] = curIndex
+	}
+	for _, oldPol := range old.PoolExpander {
+		if curIndex, ok := mapPoolIndex[oldPol.Name]; ok {
+			oldPol.UUID = cur.PoolExpander[curIndex].UUID
+		} else {
+			logrus.Error("pool not found when map ingress: %v", oldPol)
+		}
+	}
+
+	// map listener
+	mapListenerIndex := make(map[string]int)
+	for curIndex, curPol := range cur.ListenerExpander {
+		mapListenerIndex[curPol.CreateOpts.ListenerName] = curIndex
+	}
+	for _, oldPol := range old.ListenerExpander {
+		if curIndex, ok := mapListenerIndex[oldPol.CreateOpts.ListenerName]; ok {
+			oldPol.UUID = cur.ListenerExpander[curIndex].UUID
+		} else {
+			logrus.Error("listener not found when map ingress: %v", oldPol)
+		}
+	}
 }

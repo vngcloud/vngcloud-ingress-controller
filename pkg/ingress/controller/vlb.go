@@ -182,6 +182,7 @@ func (c *VLBProvider) GetLoadbalancerIDByIngress(ing *nwv1.Ingress) (string, err
 func (c *VLBProvider) DeleteLoadbalancer(con *Controller, ing *nwv1.Ingress) error {
 	klog.Infof("----------------- DeleteLoadbalancer(%s/%s) ------------------", ing.Namespace, ing.Name)
 	lb_prefix_name := c.GetResourceName(ing)
+	mapTLS, _ := c.mapHostTLS(ing)
 	lbID, err := c.GetLoadbalancerIDByIngress(ing)
 	if err != nil {
 		if err == errors.ErrLoadBalancerIDNotFoundAnnotation {
@@ -199,7 +200,7 @@ func (c *VLBProvider) DeleteLoadbalancer(con *Controller, ing *nwv1.Ingress) err
 
 	// Delete l7 load balancing rules.
 	for ruleIndex, rule := range ing.Spec.Rules {
-		isHttpsListener := false // ...................................................
+		_, isHttpsListener := mapTLS[rule.Host]
 		listenerName := consts.DEFAULT_HTTP_LISTENER_NAME
 		if isHttpsListener {
 			listenerName = consts.DEFAULT_HTTPS_LISTENER_NAME
@@ -232,6 +233,7 @@ func (c *VLBProvider) DeleteLoadbalancer(con *Controller, ing *nwv1.Ingress) err
 func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingress) (*lObjects.LoadBalancer, error) {
 	klog.Infof("----------------- EnsureLoadBalancer(%s/%s) ------------------", ing.Namespace, ing.Name)
 	lb_prefix_name := c.GetResourceName(ing)
+	mapTLS, certArr := c.mapHostTLS(ing)
 	lbID, err := c.GetLoadbalancerIDByIngress(ing)
 	if err != nil {
 		if err == errors.ErrLoadBalancerIDNotFoundAnnotation {
@@ -271,10 +273,13 @@ func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingr
 
 	// Add l7 load balancing rules. Only have 2 listener: http and https
 	for ruleIndex, rule := range ing.Spec.Rules {
-		isHttpsListener := false // ...........................................
+		_, isHttpsListener := mapTLS[rule.Host]
 		listenerOpts := consts.OPT_LISTENER_HTTP_DEFAULT
 		if isHttpsListener {
 			listenerOpts = consts.OPT_LISTENER_HTTPS_DEFAULT
+			listenerOpts.CertificateAuthorities = &certArr
+			listenerOpts.DefaultCertificateAuthority = &certArr[0]
+			listenerOpts.ClientCertificate = consts.PointerOf[string]("")
 		}
 		listenerOpts.DefaultPoolId = defaultPool.UUID
 
@@ -375,10 +380,11 @@ func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingr
 	// delete redundant rule if in oldIng
 	if oldIng != nil && len(oldIng.Spec.Rules) > len(ing.Spec.Rules) {
 		klog.Infof("--------------- delete old listener for ingress %s/%s -------------------", oldIng.Namespace, oldIng.Name)
+		mapTLS, _ := c.mapHostTLS(oldIng)
 		// delete old lb
 		for ruleIndex := len(ing.Spec.Rules); ruleIndex < len(oldIng.Spec.Rules); ruleIndex++ {
 			rule := oldIng.Spec.Rules[ruleIndex]
-			isHttpsListener := false // ...................................................
+			_, isHttpsListener := mapTLS[rule.Host]
 			listenerName := consts.DEFAULT_HTTP_LISTENER_NAME
 			if isHttpsListener {
 				listenerName = consts.DEFAULT_HTTPS_LISTENER_NAME
@@ -397,7 +403,6 @@ func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingr
 					logrus.Errorln("error when ensure policy", err)
 					return nil, err
 				}
-
 				_, err = c.ensurePool(lb.UUID, pairName, true)
 				if err != nil {
 					logrus.Errorln("error when ensure pool", err)
@@ -405,13 +410,22 @@ func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingr
 				}
 			}
 		}
-
 	}
-
 	return lb, nil
 }
 
 // /////////////////////////////////// PRIVATE METHOD /////////////////////////////////////////
+func (c *VLBProvider) mapHostTLS(ing *nwv1.Ingress) (map[string]bool, []string) {
+	m := make(map[string]bool)
+	certArr := make([]string, 0)
+	for _, tls := range ing.Spec.TLS {
+		for _, host := range tls.Hosts {
+			certArr = append(certArr, strings.TrimSpace(tls.SecretName))
+			m[host] = true
+		}
+	}
+	return m, certArr
+}
 
 // GetResourceName get Ingress related resource name.
 func (c *VLBProvider) GetResourceName(ing *nwv1.Ingress) string {

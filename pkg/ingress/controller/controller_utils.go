@@ -232,7 +232,7 @@ func popListener(pExistingListeners []*lObjects.Listener, pNewListenerID string)
 	var newListeners []*lObjects.Listener
 
 	for _, existingListener := range pExistingListeners {
-		if existingListener.ID != pNewListenerID {
+		if existingListener.UUID != pNewListenerID {
 			newListeners = append(newListeners, existingListener)
 		}
 	}

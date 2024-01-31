@@ -1,11 +1,7 @@
 package controller
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -77,59 +73,6 @@ type VLBProvider struct {
 	extraInfo    *ExtraInfo
 	metadataOpts metadata.Opts
 	api          API
-}
-
-type PoolExpander struct {
-	isInUse bool
-	Name    string
-	UUID    string
-	// Members []lObjects.Member
-	Members []pool.Member
-	// Protocol          string
-	// Description       string
-	// LoadBalanceMethod string
-	// Status            string
-	// Stickiness        bool
-	// TLSEncryption     bool
-}
-
-type PolicyExpander struct {
-	isInUse         bool
-	isHttpsListener bool
-	listenerID      string
-	// shouldForwardToPoolName string
-
-	UUID             string
-	Name             string
-	RedirectPoolID   string
-	RedirectPoolName string
-	Action           policy.PolicyOptsActionOpt
-	L7Rules          []policy.Rule
-	// *lObjects.Policy
-}
-
-type ListenerExpander struct {
-	defaultPoolName string
-	defaultPoolId   string
-	UUID            string
-	listener.CreateOpts
-}
-type IngressInspect struct {
-	PolicyExpander   []*PolicyExpander
-	PoolExpander     []*PoolExpander
-	ListenerExpander []*ListenerExpander
-}
-
-func (ing *IngressInspect) Print() {
-	for _, l := range ing.ListenerExpander {
-		fmt.Println("LISTENER: id:", l.UUID, "defaultPoolName:", l.defaultPoolName, "defaultPoolId:", l.defaultPoolId)
-	}
-	for _, p := range ing.PolicyExpander {
-		fmt.Println("---- POLICY: id:", p.UUID, "name:", p.Name, "redirectPoolName:", p.RedirectPoolName, "redirectPoolId:", p.RedirectPoolID, "action:", p.Action, "l7Rules:", p.L7Rules)
-	}
-	for _, p := range ing.PoolExpander {
-		fmt.Println("++++ POOL: name:", p.Name, "uuid:", p.UUID, "members:", p.Members)
-	}
 }
 
 func (c *VLBProvider) Init() error {
@@ -551,7 +494,7 @@ func (c *VLBProvider) ActionCompareIngress(lbID string, oldIngExpander, newIngEx
 	logrus.Infoln("curLBExpander:")
 	curLBExpander.Print()
 
-	c.MapIDExpander(oldIngExpander, curLBExpander)
+	MapIDExpander(oldIngExpander, curLBExpander) // ..........................................
 	logrus.Infoln("oldIngExpander:")
 	oldIngExpander.Print()
 
@@ -970,91 +913,4 @@ func (c *VLBProvider) FindListenerByName(lbID, name string) (*lObjects.Listener,
 		}
 	}
 	return nil, errors.ErrNotFound
-}
-
-func EncodeToValidName(str string) string {
-	// Only letters (a-z, A-Z, 0-9, '_', '.', '-') are allowed.
-	// the other char will repaced by ":{number}:"
-	for _, char := range str {
-		if char >= 'a' && char <= 'z' {
-			continue
-		}
-		if char >= 'A' && char <= 'Z' {
-			continue
-		}
-		if char >= '0' && char <= '9' {
-			continue
-		}
-		if char == '_' || char == '.' || char == '-' {
-			continue
-		}
-		str = strings.ReplaceAll(str, string(char), fmt.Sprintf("-%d-", char))
-	}
-	return str
-}
-func DecodeFromValidName(str string) string {
-	r, _ := regexp.Compile("-[0-9]+-")
-	matchs := r.FindStringSubmatch(str)
-	for _, match := range matchs {
-		number, _ := strconv.Atoi(match[1 : len(match)-1])
-		str = strings.ReplaceAll(str, match, fmt.Sprintf("%c", number))
-	}
-	return str
-}
-
-// hash a string to a string have 10 char
-func HashString(str string) string {
-	// Create a new SHA-256 hash
-	hasher := sha256.New()
-	// Write the input string to the hash
-	hasher.Write([]byte(str))
-	// Sum returns the hash as a byte slice
-	hashBytes := hasher.Sum(nil)
-	// Truncate the hash to 10 characters
-	truncatedHash := hashBytes[:10]
-	// Convert the truncated hash to a hex-encoded string
-	hashString := hex.EncodeToString(truncatedHash)
-	return hashString
-}
-
-func (c *VLBProvider) MapIDExpander(old, cur *IngressInspect) {
-	// map policy
-	mapPolicyIndex := make(map[string]int)
-	for curIndex, curPol := range cur.PolicyExpander {
-		mapPolicyIndex[curPol.Name] = curIndex
-	}
-	for _, oldPol := range old.PolicyExpander {
-		if curIndex, ok := mapPolicyIndex[oldPol.Name]; ok {
-			oldPol.UUID = cur.PolicyExpander[curIndex].UUID
-			oldPol.listenerID = cur.PolicyExpander[curIndex].listenerID
-		} else {
-			logrus.Error("policy not found when map ingress: %v", oldPol)
-		}
-	}
-
-	// map pool
-	mapPoolIndex := make(map[string]int)
-	for curIndex, curPol := range cur.PoolExpander {
-		mapPoolIndex[curPol.Name] = curIndex
-	}
-	for _, oldPol := range old.PoolExpander {
-		if curIndex, ok := mapPoolIndex[oldPol.Name]; ok {
-			oldPol.UUID = cur.PoolExpander[curIndex].UUID
-		} else {
-			logrus.Error("pool not found when map ingress: %v", oldPol)
-		}
-	}
-
-	// map listener
-	mapListenerIndex := make(map[string]int)
-	for curIndex, curPol := range cur.ListenerExpander {
-		mapListenerIndex[curPol.CreateOpts.ListenerName] = curIndex
-	}
-	for _, oldPol := range old.ListenerExpander {
-		if curIndex, ok := mapListenerIndex[oldPol.CreateOpts.ListenerName]; ok {
-			oldPol.UUID = cur.ListenerExpander[curIndex].UUID
-		} else {
-			logrus.Error("listener not found when map ingress: %v", oldPol)
-		}
-	}
 }

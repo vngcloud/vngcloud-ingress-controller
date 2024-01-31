@@ -185,6 +185,16 @@ func (c *API) DeleteListener(vSC *client.ServiceClient, projectID, lbID, listene
 	return err
 }
 
+func (c *API) UpdateListener(vSC *client.ServiceClient, projectID, lbID, listenerID string, opt *listener.UpdateOpts) error {
+	logrus.Infoln("*****API__UpdateListener: ", "lbID: ", lbID, "projectID: ", projectID, "listenerID: ", listenerID)
+	opt.ProjectID = projectID
+	opt.LoadBalancerID = lbID
+	opt.ListenerID = listenerID
+	err := listener.Update(vSC, opt)
+	logrus.Infoln("*****API__UpdateListener: ", "err: ", err)
+	return err
+}
+
 // POLICY
 func (c *API) CreatePolicy(vSC *client.ServiceClient, projectID, lbID, listenerID string, opt *policy.CreateOptsBuilder) (*lObjects.Policy, error) {
 	logrus.Infoln("*****API__CreatePolicy: ", "lbID: ", lbID, "projectID: ", projectID, "listenerID: ", listenerID, "opt: ", opt)

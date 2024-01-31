@@ -1,0 +1,105 @@
+package controller
+
+import (
+	"fmt"
+	"github.com/sirupsen/logrus"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/listener"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/policy"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
+)
+
+type PoolExpander struct {
+	Name string
+	UUID string
+	// Members []lObjects.Member
+	Members []*pool.Member
+	// Protocol          string
+	// Description       string
+	// LoadBalanceMethod string
+	// Status            string
+	// Stickiness        bool
+	// TLSEncryption     bool
+}
+
+type PolicyExpander struct {
+	isInUse         bool
+	isHttpsListener bool
+	listenerID      string
+	// shouldForwardToPoolName string
+
+	UUID             string
+	Name             string
+	RedirectPoolID   string
+	RedirectPoolName string
+	Action           policy.PolicyOptsActionOpt
+	L7Rules          []policy.Rule
+	// *lObjects.Policy
+}
+
+type ListenerExpander struct {
+	UUID string
+	listener.CreateOpts
+}
+type IngressInspect struct {
+	defaultPoolName    string
+	defaultPoolId      string
+	defaultPoolMembers []*pool.Member
+	PolicyExpander     []*PolicyExpander
+	PoolExpander       []*PoolExpander
+	ListenerExpander   []*ListenerExpander
+}
+
+func (ing *IngressInspect) Print() {
+	fmt.Println("DEFAULT POOL: name:", ing.defaultPoolName, "id:", ing.defaultPoolId, "members:", ing.defaultPoolMembers)
+	for _, l := range ing.ListenerExpander {
+		fmt.Println("LISTENER: id:", l.UUID)
+	}
+	for _, p := range ing.PolicyExpander {
+		fmt.Println("---- POLICY: id:", p.UUID, "name:", p.Name, "redirectPoolName:", p.RedirectPoolName, "redirectPoolId:", p.RedirectPoolID, "action:", p.Action, "l7Rules:", p.L7Rules)
+	}
+	for _, p := range ing.PoolExpander {
+		fmt.Println("++++ POOL: name:", p.Name, "uuid:", p.UUID, "members:", p.Members)
+	}
+}
+
+func MapIDExpander(old, cur *IngressInspect) {
+	// map policy
+	mapPolicyIndex := make(map[string]int)
+	for curIndex, curPol := range cur.PolicyExpander {
+		mapPolicyIndex[curPol.Name] = curIndex
+	}
+	for _, oldPol := range old.PolicyExpander {
+		if curIndex, ok := mapPolicyIndex[oldPol.Name]; ok {
+			oldPol.UUID = cur.PolicyExpander[curIndex].UUID
+			oldPol.listenerID = cur.PolicyExpander[curIndex].listenerID
+		} else {
+			logrus.Error("policy not found when map ingress: %v", oldPol)
+		}
+	}
+
+	// map pool
+	mapPoolIndex := make(map[string]int)
+	for curIndex, curPol := range cur.PoolExpander {
+		mapPoolIndex[curPol.Name] = curIndex
+	}
+	for _, oldPol := range old.PoolExpander {
+		if curIndex, ok := mapPoolIndex[oldPol.Name]; ok {
+			oldPol.UUID = cur.PoolExpander[curIndex].UUID
+		} else {
+			logrus.Error("pool not found when map ingress: %v", oldPol)
+		}
+	}
+
+	// map listener
+	mapListenerIndex := make(map[string]int)
+	for curIndex, curPol := range cur.ListenerExpander {
+		mapListenerIndex[curPol.CreateOpts.ListenerName] = curIndex
+	}
+	for _, oldPol := range old.ListenerExpander {
+		if curIndex, ok := mapListenerIndex[oldPol.CreateOpts.ListenerName]; ok {
+			oldPol.UUID = cur.ListenerExpander[curIndex].UUID
+		} else {
+			logrus.Error("listener not found when map ingress: %v", oldPol)
+		}
+	}
+}

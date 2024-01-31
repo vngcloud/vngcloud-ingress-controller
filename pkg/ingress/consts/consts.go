@@ -19,8 +19,8 @@ var OPT_POOL_DEFAULT = pool.CreateOpts{
 	Algorithm:     pool.CreateOptsAlgorithmOptSourceIP, // CreateOptsAlgorithmOptLeastConn, CreateOptsAlgorithmOptRoundRobin
 	PoolName:      DEFAULT_NAME_DEFAULT_POOL,
 	PoolProtocol:  pool.CreateOptsProtocolOptHTTP,
-	Stickiness:    false,
-	TLSEncryption: false,
+	Stickiness:    PointerOf[bool](false),
+	TLSEncryption: PointerOf[bool](false),
 	HealthMonitor: pool.HealthMonitor{
 		HealthyThreshold:    3,
 		UnhealthyThreshold:  3,

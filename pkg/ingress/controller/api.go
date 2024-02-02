@@ -83,12 +83,12 @@ func (c *API) DeleteLB(vSC *client.ServiceClient, projectID, lbID string) error 
 }
 
 // POOL
-func (c *API) CreatePool(vSC *client.ServiceClient, projectID, lbID string, opt pool.CreateOpts) (*lObjects.Pool, error) {
+func (c *API) CreatePool(vSC *client.ServiceClient, projectID, lbID string, opt *pool.CreateOpts) (*lObjects.Pool, error) {
 	logrus.Infoln("*****API__CreatePool: ", "lbID: ", lbID, "projectID: ", projectID)
 	opt.ProjectID = projectID
 	opt.LoadBalancerID = lbID
 
-	resp, err := pool.Create(vSC, &opt)
+	resp, err := pool.Create(vSC, opt)
 	logrus.Infoln("*****API__CreatePool: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
@@ -104,10 +104,14 @@ func (c *API) ListPoolOfLB(vSC *client.ServiceClient, projectID, lbID string) ([
 	return resp, err
 }
 
-func (c *API) UpdatePoolMember(vSC *client.ServiceClient, projectID, lbID, poolID string, mems []pool.Member) error {
-	logrus.Infoln("*****API__UpdatePoolMember: ", "poolID: ", poolID, "projectID: ", projectID)
+func (c *API) UpdatePoolMember(vSC *client.ServiceClient, projectID, lbID, poolID string, mems []*pool.Member) error {
+	logrus.Infoln("*****API__UpdatePoolMember: ", "poolID: ", poolID, "projectID: ", projectID, "mems: ", mems)
+	newMems := make([]pool.Member, len(mems))
+	for i, mem := range mems {
+		newMems[i] = *mem
+	}
 	opt := &pool.UpdatePoolMembersOpts{
-		Members: mems,
+		Members: newMems,
 	}
 	opt.ProjectID = projectID
 	opt.LoadBalancerID = lbID
@@ -187,6 +191,7 @@ func (c *API) DeleteListener(vSC *client.ServiceClient, projectID, lbID, listene
 
 func (c *API) UpdateListener(vSC *client.ServiceClient, projectID, lbID, listenerID string, opt *listener.UpdateOpts) error {
 	logrus.Infoln("*****API__UpdateListener: ", "lbID: ", lbID, "projectID: ", projectID, "listenerID: ", listenerID)
+	logrus.Infoln("*****API__UpdateListener: ", "opt: ", opt)
 	opt.ProjectID = projectID
 	opt.LoadBalancerID = lbID
 	opt.ListenerID = listenerID

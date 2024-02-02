@@ -118,7 +118,7 @@ func (c *VLBProvider) Init() error {
 	c.vServerSC = vserverSC
 
 	c.setUpPortalInfo()
-	c.cluster, err = c.api.GetClusterInfo(c.vServerSC, c.extraInfo.ProjectID, c.config.ClusterID)
+	c.cluster, err = c.api.GetClusterInfo(c.vServerSC, c.GetProjectID(), c.config.ClusterID)
 	c.ListLoadBalancerBySubnetID()
 
 	return nil
@@ -200,6 +200,44 @@ func (c *VLBProvider) DeleteLoadbalancer(con *Controller, ing *nwv1.Ingress) err
 		return err
 	}
 	// can delete lb instance here ......................
+	listeners, err := c.api.ListListenerOfLB(c.vLBSC, c.GetProjectID(), lbID)
+	if err != nil {
+		logrus.Errorln("error when list listener of lb", err)
+		return err
+	}
+	for _, lis := range listeners {
+		policies, err := c.api.ListPolicyOfListener(c.vLBSC, c.GetProjectID(), lbID, lis.UUID)
+		if err != nil {
+			logrus.Errorln("error when list policy of listener", err)
+			return err
+		}
+		if len(policies) == 0 {
+			err = c.api.DeleteListener(c.vLBSC, c.GetProjectID(), lbID, lis.UUID)
+			if err != nil {
+				logrus.Errorln("error when delete listener", err)
+				return err
+			}
+			c.WaitForLBActive(lbID)
+		}
+	}
+	pools, err := c.api.ListPoolOfLB(c.vLBSC, c.GetProjectID(), lbID)
+	if err != nil {
+		logrus.Errorln("error when list pool of lb", err)
+		return err
+	}
+	for _, p := range pools {
+		if p.Name == consts.DEFAULT_NAME_DEFAULT_POOL {
+			if len(p.Members) == 0 {
+				err = c.api.DeletePool(c.vLBSC, c.GetProjectID(), lbID, p.UUID)
+				if err != nil {
+					logrus.Errorln("error when delete pool", err)
+					return err
+				}
+				c.WaitForLBActive(lbID)
+			}
+			break
+		}
+	}
 	return nil
 }
 
@@ -220,8 +258,9 @@ func (c *VLBProvider) InspectCurrentLB(lbID string) (*IngressInspect, error) {
 	expectPolicyName := make([]*PolicyExpander, 0)
 	expectPoolName := make([]*PoolExpander, 0)
 	expectListenerName := make([]*ListenerExpander, 0)
+	ingressInspect := &IngressInspect{}
 
-	liss, err := c.api.ListListenerOfLB(c.vLBSC, c.extraInfo.ProjectID, lbID)
+	liss, err := c.api.ListListenerOfLB(c.vLBSC, c.GetProjectID(), lbID)
 	if err != nil {
 		logrus.Errorln("error when list listener of lb", err)
 		return nil, err
@@ -233,23 +272,22 @@ func (c *VLBProvider) InspectCurrentLB(lbID string) (*IngressInspect, error) {
 		}
 		listenerOpts.DefaultPoolId = lis.DefaultPoolId
 		expectListenerName = append(expectListenerName, &ListenerExpander{
-			UUID:            lis.UUID,
-			defaultPoolName: lis.DefaultPoolName,
-			defaultPoolId:   lis.DefaultPoolId,
-			CreateOpts:      listenerOpts,
+			UUID:       lis.UUID,
+			CreateOpts: listenerOpts,
 		})
-
+		ingressInspect.defaultPoolName = lis.DefaultPoolName
+		ingressInspect.defaultPoolId = lis.DefaultPoolId
 	}
 
-	getPools, err := c.api.ListPoolOfLB(c.vLBSC, c.extraInfo.ProjectID, lbID)
+	getPools, err := c.api.ListPoolOfLB(c.vLBSC, c.GetProjectID(), lbID)
 	if err != nil {
 		logrus.Errorln("error when list pool of lb", err)
 		return nil, err
 	}
 	for _, p := range getPools {
-		poolMembers := make([]pool.Member, 0)
+		poolMembers := make([]*pool.Member, 0)
 		for _, m := range p.Members {
-			poolMembers = append(poolMembers, pool.Member{
+			poolMembers = append(poolMembers, &pool.Member{
 				IpAddress:   m.Address,
 				Port:        m.ProtocolPort,
 				Backup:      m.Backup,
@@ -259,7 +297,6 @@ func (c *VLBProvider) InspectCurrentLB(lbID string) (*IngressInspect, error) {
 			})
 		}
 		expectPoolName = append(expectPoolName, &PoolExpander{
-			isInUse: false,
 			Name:    p.Name,
 			UUID:    p.UUID,
 			Members: poolMembers,
@@ -267,7 +304,7 @@ func (c *VLBProvider) InspectCurrentLB(lbID string) (*IngressInspect, error) {
 	}
 
 	for _, lis := range liss {
-		pols, err := c.api.ListPolicyOfListener(c.vLBSC, c.extraInfo.ProjectID, lbID, lis.UUID)
+		pols, err := c.api.ListPolicyOfListener(c.vLBSC, c.GetProjectID(), lbID, lis.UUID)
 		if err != nil {
 			logrus.Errorln("error when list policy of listener", err)
 			return nil, err
@@ -293,12 +330,12 @@ func (c *VLBProvider) InspectCurrentLB(lbID string) (*IngressInspect, error) {
 			})
 		}
 	}
-	return &IngressInspect{
-		PolicyExpander:   expectPolicyName,
-		PoolExpander:     expectPoolName,
-		ListenerExpander: expectListenerName,
-	}, nil
+	ingressInspect.PolicyExpander = expectPolicyName
+	ingressInspect.PoolExpander = expectPoolName
+	ingressInspect.ListenerExpander = expectListenerName
+	return ingressInspect, nil
 }
+
 func (c *VLBProvider) InspectIngress(con *Controller, ing *nwv1.Ingress) (*IngressInspect, error) {
 	if ing == nil {
 		return &IngressInspect{
@@ -328,19 +365,18 @@ func (c *VLBProvider) InspectIngress(con *Controller, ing *nwv1.Ingress) (*Ingre
 
 		membersAddr, _ := con.GetNodeMembersAddr()
 		klog.Infof("membersAddr: %v", membersAddr)
-		members := make([]pool.Member, 0)
+		members := make([]*pool.Member, 0)
 		for _, addr := range membersAddr {
-			members = append(members, pool.Member{
+			members = append(members, &pool.Member{
 				IpAddress:   addr,
 				Port:        nodePort,
 				Backup:      false,
 				Weight:      1,
-				Name:        addr,
+				Name:        poolName + "_" + addr,
 				MonitorPort: nodePort,
 			})
 		}
 		return &PoolExpander{
-			isInUse: false,
 			Name:    poolName,
 			UUID:    "",
 			Members: members,
@@ -348,37 +384,38 @@ func (c *VLBProvider) InspectIngress(con *Controller, ing *nwv1.Ingress) (*Ingre
 	}
 
 	// check if have default pool
-	defaultPoolName := ""
+	ingressInspect := &IngressInspect{}
+	ingressInspect.defaultPoolId = ""
+	ingressInspect.defaultPoolName = consts.DEFAULT_NAME_DEFAULT_POOL
+	ingressInspect.defaultPoolMembers = make([]*pool.Member, 0)
 	if ing.Spec.DefaultBackend != nil && ing.Spec.DefaultBackend.Service != nil {
 		defaultPoolExpander, err := GetPoolExpander(ing.Spec.DefaultBackend.Service)
 		if err != nil {
 			logrus.Errorln("error when get default pool expander", err)
 			return nil, err
 		}
-		expectPoolName = append(expectPoolName, defaultPoolExpander)
-		defaultPoolName = defaultPoolExpander.Name
+		ingressInspect.defaultPoolMembers = defaultPoolExpander.Members
 	}
+	// ensure http listener and https listener
+	AddDefaultListener := func() {
+		if len(certArr) > 0 {
+			listenerHttpsOpts := consts.OPT_LISTENER_HTTPS_DEFAULT
+			listenerHttpsOpts.CertificateAuthorities = &certArr
+			listenerHttpsOpts.DefaultCertificateAuthority = &certArr[0]
+			listenerHttpsOpts.ClientCertificate = consts.PointerOf[string]("")
+			expectListenerName = append(expectListenerName, &ListenerExpander{
+				CreateOpts: listenerHttpsOpts,
+			})
+		}
 
-	isHaveHTTPListener := false
-	isHaveHTTPSListener := false
+		expectListenerName = append(expectListenerName, &ListenerExpander{
+			CreateOpts: consts.OPT_LISTENER_HTTP_DEFAULT,
+		})
+	}
+	AddDefaultListener()
+
 	for ruleIndex, rule := range ing.Spec.Rules {
 		_, isHttpsListener := mapTLS[rule.Host]
-		if isHttpsListener && !isHaveHTTPSListener {
-			listenerOpts := consts.OPT_LISTENER_HTTPS_DEFAULT
-			listenerOpts.CertificateAuthorities = &certArr
-			listenerOpts.DefaultCertificateAuthority = &certArr[0]
-			listenerOpts.ClientCertificate = consts.PointerOf[string]("")
-			expectListenerName = append(expectListenerName, &ListenerExpander{
-				defaultPoolName: defaultPoolName,
-				CreateOpts:      listenerOpts,
-			})
-		}
-		if !isHttpsListener && !isHaveHTTPListener {
-			expectListenerName = append(expectListenerName, &ListenerExpander{
-				defaultPoolName: defaultPoolName,
-				CreateOpts:      consts.OPT_LISTENER_HTTP_DEFAULT,
-			})
-		}
 
 		for pathIndex, path := range rule.HTTP.Paths {
 			policyName := c.GetPolicyName(lb_prefix_name, isHttpsListener, ruleIndex, pathIndex)
@@ -417,11 +454,10 @@ func (c *VLBProvider) InspectIngress(con *Controller, ing *nwv1.Ingress) (*Ingre
 			})
 		}
 	}
-	return &IngressInspect{
-		PolicyExpander:   expectPolicyName,
-		PoolExpander:     expectPoolName,
-		ListenerExpander: expectListenerName,
-	}, nil
+	ingressInspect.PolicyExpander = expectPolicyName
+	ingressInspect.PoolExpander = expectPoolName
+	ingressInspect.ListenerExpander = expectListenerName
+	return ingressInspect, nil
 }
 
 func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingress) (*lObjects.LoadBalancer, error) {
@@ -471,7 +507,7 @@ func (c *VLBProvider) ensureLoadBalancer(ing *nwv1.Ingress) (string, error) {
 		packageID := getStringFromIngressAnnotation(ing, ServiceAnnotationPackageID, consts.DEFAULT_PACKAGE_ID)
 
 		lb, err := c.api.CreateLB(c.vLBSC,
-			lbName, packageID, c.cluster.SubnetID, c.extraInfo.ProjectID,
+			lbName, packageID, c.cluster.SubnetID, c.GetProjectID(),
 			loadbalancer.CreateOptsSchemeOptInternet,
 			loadbalancer.CreateOptsTypeOptLayer7)
 		if err != nil {
@@ -491,13 +527,29 @@ func (c *VLBProvider) ActionCompareIngress(lbID string, oldIngExpander, newIngEx
 		logrus.Errorln("error when inspect current lb", err)
 		return nil, err
 	}
-	logrus.Infoln("curLBExpander:")
+	logrus.Infoln("########################## curLBExpander:")
 	curLBExpander.Print()
 
 	MapIDExpander(oldIngExpander, curLBExpander) // ..........................................
-	logrus.Infoln("oldIngExpander:")
+	logrus.Infoln("########################## oldIngExpander:")
 	oldIngExpander.Print()
 
+	logrus.Infoln("########################## newIngExpander:")
+	newIngExpander.Print()
+
+	// ensure default pool
+	defaultPool, err := c.ensurePool(lb.UUID, consts.DEFAULT_NAME_DEFAULT_POOL, false)
+	if err != nil {
+		logrus.Errorln("error when ensure default pool", err)
+		return nil, err
+	}
+	// ensure default pool member
+
+	_, err = c.ensureDefaultPoolMember(lb.UUID, defaultPool.UUID, oldIngExpander.defaultPoolMembers, newIngExpander.defaultPoolMembers)
+	if err != nil {
+		logrus.Errorln("error when ensure default pool member", err)
+		return nil, err
+	}
 	// ensure all from newIngExpander
 	mapPoolNameIndex := make(map[string]int)
 	for poolIndex, ipool := range newIngExpander.PoolExpander {
@@ -516,16 +568,7 @@ func (c *VLBProvider) ActionCompareIngress(lbID string, oldIngExpander, newIngEx
 	}
 	mapListenerNameIndex := make(map[string]int)
 	for listenerIndex, ilistener := range newIngExpander.ListenerExpander {
-		poolID := ""
-		if ilistener.defaultPoolName != "" {
-			poolIndex, isHave := mapPoolNameIndex[ilistener.defaultPoolName]
-			if !isHave {
-				logrus.Errorf(".........pool not found in listener: %v", ilistener.defaultPoolName)
-				return nil, err
-			}
-			poolID = newIngExpander.PoolExpander[poolIndex].UUID
-		}
-		ilistener.CreateOpts.DefaultPoolId = poolID
+		ilistener.CreateOpts.DefaultPoolId = defaultPool.UUID
 
 		lis, err := c.ensureListener(lb.UUID, ilistener.CreateOpts.ListenerName, ilistener.CreateOpts, false)
 		if err != nil {
@@ -601,7 +644,7 @@ func (c *VLBProvider) ActionCompareIngress(lbID string, oldIngExpander, newIngEx
 	}
 	for _, oldIngPool := range oldIngExpander.PoolExpander {
 		_, isPoolWillUse := poolWillUse[oldIngPool.Name]
-		if !isPoolWillUse {
+		if !isPoolWillUse && oldIngPool.Name != consts.DEFAULT_NAME_DEFAULT_POOL {
 			logrus.Warnf("pool not in use: %v, delete", oldIngPool.Name)
 			_, err := c.ensurePool(lb.UUID, oldIngPool.Name, true)
 			if err != nil {
@@ -671,7 +714,7 @@ func (c *VLBProvider) ensurePool(lbID, poolName string, isDelete bool) (*lObject
 			}
 			newPoolOpts := consts.OPT_POOL_DEFAULT
 			newPoolOpts.PoolName = poolName
-			newPool, err := c.api.CreatePool(c.vLBSC, c.extraInfo.ProjectID, lbID, newPoolOpts)
+			newPool, err := c.api.CreatePool(c.vLBSC, c.GetProjectID(), lbID, &newPoolOpts)
 			if err != nil {
 				logrus.Errorln("error when create new pool", err)
 				return nil, err
@@ -683,7 +726,11 @@ func (c *VLBProvider) ensurePool(lbID, poolName string, isDelete bool) (*lObject
 		}
 	}
 	if isDelete {
-		err := c.api.DeletePool(c.vLBSC, c.extraInfo.ProjectID, lbID, pool.UUID)
+		if pool.Name == consts.DEFAULT_NAME_DEFAULT_POOL {
+			logrus.Info("pool is default pool, not delete")
+			return nil, nil
+		}
+		err := c.api.DeletePool(c.vLBSC, c.GetProjectID(), lbID, pool.UUID)
 		if err != nil {
 			logrus.Errorln("error when delete pool", err)
 			return nil, err
@@ -693,28 +740,131 @@ func (c *VLBProvider) ensurePool(lbID, poolName string, isDelete bool) (*lObject
 	return pool, nil
 }
 
-func (c *VLBProvider) ensurePoolMember(lbID, poolID string, members []pool.Member) (*lObjects.Pool, error) {
-	klog.Infof("------------ ensurePoolMember: %s", poolID)
-	memsGet, err := c.api.GetMemberPool(c.vLBSC, c.extraInfo.ProjectID, lbID, poolID)
+func (c *VLBProvider) ensureDefaultPoolMember(lbID, poolID string, oldMembers, newMembers []*pool.Member) (*lObjects.Pool, error) {
+	klog.Infof("------------ ensureDefaultPoolMember: %s", poolID)
+	memsGet, err := c.api.GetMemberPool(c.vLBSC, c.GetProjectID(), lbID, poolID)
 	if err != nil {
 		logrus.Errorln("error when get pool members", err)
 		return nil, err
 	}
-	comparePoolMembers := func(p1 []pool.Member, p2 []*lObjects.Member) bool {
+	getRedundant := func(old, new []*pool.Member) []*pool.Member {
+		redundant := make([]*pool.Member, 0)
+		for _, o := range old {
+			isHave := false
+			for _, n := range new {
+				if o.IpAddress == n.IpAddress &&
+					o.MonitorPort == n.MonitorPort &&
+					o.Weight == n.Weight &&
+					o.Backup == n.Backup &&
+					// o.Name == n.Name &&
+					o.Port == n.Port {
+					isHave = true
+					break
+				}
+			}
+			if !isHave {
+				redundant = append(redundant, o)
+			}
+		}
+		return redundant
+	}
+	needDelete := getRedundant(oldMembers, newMembers)
+	needCreate := newMembers // need ensure
+
+	logrus.Infof("memGets: %v", memsGet)
+	logrus.Infof("needDelete: %v", needDelete)
+	logrus.Infof("needCreate: %v", needCreate)
+
+	checkIfExist := func(mems []*pool.Member, mem *pool.Member) bool {
+		for _, r := range mems {
+			if r.IpAddress == mem.IpAddress &&
+				r.Port == mem.Port &&
+				r.MonitorPort == mem.MonitorPort &&
+				r.Backup == mem.Backup &&
+				// r.Name == mem.Name &&
+				r.Weight == mem.Weight {
+				return true
+			}
+		}
+		return false
+	}
+	updateMember := make([]*pool.Member, 0)
+	for _, m := range memsGet {
+		_m := &pool.Member{
+			IpAddress:   m.Address,
+			Port:        m.ProtocolPort,
+			Backup:      m.Backup,
+			Weight:      m.Weight,
+			Name:        m.Name,
+			MonitorPort: m.MonitorPort,
+		}
+		if !checkIfExist(needDelete, _m) {
+			updateMember = append(updateMember, _m)
+		}
+	}
+	for _, m := range needCreate {
+		if !checkIfExist(updateMember, m) {
+			updateMember = append(updateMember, m)
+		}
+	}
+
+	comparePoolMembers := func(p1 []*pool.Member, p2 []*lObjects.Member) bool {
 		if len(p1) != len(p2) {
 			return false
 		}
-		checkIfExist := func(mems []*lObjects.Member, mem pool.Member) bool {
-			for _, r := range mems {
-				if r.Address == mem.IpAddress &&
-					r.ProtocolPort == mem.Port &&
-					r.MonitorPort == mem.MonitorPort &&
-					r.Backup == mem.Backup &&
-					r.Name == mem.Name &&
-					r.Weight == mem.Weight {
-					return true
-				}
+		for _, m := range p2 {
+			_m := &pool.Member{
+				IpAddress:   m.Address,
+				Port:        m.ProtocolPort,
+				Backup:      m.Backup,
+				Weight:      m.Weight,
+				Name:        m.Name,
+				MonitorPort: m.MonitorPort,
 			}
+			if !checkIfExist(p1, _m) {
+				logrus.Infof("member in pool not exist: %v", _m)
+				return false
+			}
+		}
+		return true
+	}
+	if comparePoolMembers(updateMember, memsGet) {
+		logrus.Infof("no need update default pool member")
+		return nil, nil
+	}
+
+	err = c.api.UpdatePoolMember(c.vLBSC, c.GetProjectID(), lbID, poolID, updateMember)
+	if err != nil {
+		logrus.Errorln("error when update pool members", err)
+		return nil, err
+	}
+	c.WaitForLBActive(lbID)
+	return nil, nil
+}
+
+// make sure that pool member is exist, expandable is true if you want to have many service reuse a same pool
+func (c *VLBProvider) ensurePoolMember(lbID, poolID string, members []*pool.Member) (*lObjects.Pool, error) {
+	klog.Infof("------------ ensurePoolMember: %s", poolID)
+	memsGet, err := c.api.GetMemberPool(c.vLBSC, c.GetProjectID(), lbID, poolID)
+	if err != nil {
+		logrus.Errorln("error when get pool members", err)
+		return nil, err
+	}
+	checkIfExist := func(mems []*lObjects.Member, mem *pool.Member) bool {
+		for _, r := range mems {
+			if r.Address == mem.IpAddress &&
+				r.ProtocolPort == mem.Port &&
+				r.MonitorPort == mem.MonitorPort &&
+				r.Backup == mem.Backup &&
+				r.Name == mem.Name &&
+				r.Weight == mem.Weight {
+				return true
+			}
+		}
+		return false
+	}
+	comparePoolMembers := func(p1 []*pool.Member, p2 []*lObjects.Member) bool {
+		if len(p1) != len(p2) {
 			return false
 		}
 		for _, p := range p1 {
@@ -726,7 +876,23 @@ func (c *VLBProvider) ensurePoolMember(lbID, poolID string, members []pool.Membe
 		return true
 	}
 	if !comparePoolMembers(members, memsGet) {
-		err := c.api.UpdatePoolMember(c.vLBSC, c.extraInfo.ProjectID, lbID, poolID, members)
+		updateMember := make([]*pool.Member, 0)
+		for _, m := range memsGet {
+			updateMember = append(updateMember, &pool.Member{
+				IpAddress:   m.Address,
+				Port:        m.ProtocolPort,
+				Backup:      m.Backup,
+				Weight:      m.Weight,
+				Name:        m.Name,
+				MonitorPort: m.MonitorPort,
+			})
+		}
+		for _, m := range members {
+			if !checkIfExist(memsGet, m) {
+				updateMember = append(updateMember, m)
+			}
+		}
+		err := c.api.UpdatePoolMember(c.vLBSC, c.GetProjectID(), lbID, poolID, updateMember)
 		if err != nil {
 			logrus.Errorln("error when update pool members", err)
 			return nil, err
@@ -748,22 +914,46 @@ func (c *VLBProvider) ensureListener(lbID, lisName string, listenerOpts listener
 			}
 			// create listener point to default pool
 			listenerOpts.ListenerName = lisName
-			listener, err := c.api.CreateListener(c.vLBSC, c.extraInfo.ProjectID, lbID, &listenerOpts)
+			_, err := c.api.CreateListener(c.vLBSC, c.GetProjectID(), lbID, &listenerOpts)
 			if err != nil {
 				logrus.Fatal("error when create listener", err)
 				return nil, err
 			}
-			lis = listener
+			c.WaitForLBActive(lbID)
+			lis, err = c.FindListenerByName(lbID, lisName)
+			if err != nil {
+				logrus.Errorln("error when find listener", err)
+				return nil, err
+			}
 		} else {
 			logrus.Errorln("error when find listener", err)
 			return nil, err
 		}
 	}
+
 	if isDelete {
-		err := c.api.DeleteListener(c.vLBSC, c.extraInfo.ProjectID, lbID, lis.UUID)
+		err := c.api.DeleteListener(c.vLBSC, c.GetProjectID(), lbID, lis.UUID)
 		if err != nil {
 			logrus.Errorln("error when delete listener", err)
 			return nil, err
+		}
+	} else {
+		if lis.DefaultPoolId != listenerOpts.DefaultPoolId && listenerOpts.DefaultPoolId != "" {
+			updateOpts := &listener.UpdateOpts{
+				AllowedCidrs:                listenerOpts.AllowedCidrs,
+				DefaultPoolId:               listenerOpts.DefaultPoolId,
+				TimeoutClient:               listenerOpts.TimeoutClient,
+				TimeoutConnection:           listenerOpts.TimeoutConnection,
+				TimeoutMember:               listenerOpts.TimeoutMember,
+				Headers:                     lis.Headers,
+				DefaultCertificateAuthority: lis.DefaultCertificateAuthority,
+				ClientCertificate:           lis.ClientCertificateAuthentication,
+			}
+			err := c.api.UpdateListener(c.vLBSC, c.GetProjectID(), lbID, lis.UUID, updateOpts)
+			if err != nil {
+				logrus.Error("error when update listener: ", err)
+				return nil, err
+			}
 		}
 	}
 	c.WaitForLBActive(lbID)
@@ -774,7 +964,7 @@ func (c *VLBProvider) ensurePolicy(lbID, listenerID, policyName string, policyOp
 	klog.Infof("------------ ensurePolicy: %s", policyName)
 	FindPolicyByName := func(lbID, lisID, name string) (*lObjects.Policy, error) {
 		klog.Infof("------------ FindPolicyByName: lbID: %s, lisID: %s, name: %s", lbID, lisID, name)
-		policyArr, err := c.api.ListPolicyOfListener(c.vLBSC, c.extraInfo.ProjectID, lbID, lisID)
+		policyArr, err := c.api.ListPolicyOfListener(c.vLBSC, c.GetProjectID(), lbID, lisID)
 		if err != nil {
 			logrus.Errorln("error when list policy", err)
 			return nil, err
@@ -794,7 +984,7 @@ func (c *VLBProvider) ensurePolicy(lbID, listenerID, policyName string, policyOp
 				logrus.Infof("policy not found: %s, maybe deleted", policyName)
 				return nil, nil
 			}
-			newPolicy, err := c.api.CreatePolicy(c.vLBSC, c.extraInfo.ProjectID, lbID, listenerID, policyOpt)
+			newPolicy, err := c.api.CreatePolicy(c.vLBSC, c.GetProjectID(), lbID, listenerID, policyOpt)
 			if err != nil {
 				logrus.Fatal("error when create policy", err)
 				return nil, err
@@ -805,14 +995,14 @@ func (c *VLBProvider) ensurePolicy(lbID, listenerID, policyName string, policyOp
 			return nil, err
 		}
 	} else if isDelete {
-		err := c.api.DeletePolicy(c.vLBSC, c.extraInfo.ProjectID, lbID, listenerID, pol.UUID)
+		err := c.api.DeletePolicy(c.vLBSC, c.GetProjectID(), lbID, listenerID, pol.UUID)
 		if err != nil {
 			logrus.Errorln("error when delete policy", err)
 			return nil, err
 		}
 	} else {
 		// get policy and update policy
-		newpolicy, err := c.api.GetPolicy(c.vLBSC, c.extraInfo.ProjectID, lbID, listenerID, pol.UUID)
+		newpolicy, err := c.api.GetPolicy(c.vLBSC, c.GetProjectID(), lbID, listenerID, pol.UUID)
 		if err != nil {
 			logrus.Fatal("error when get policy", err)
 			return nil, err
@@ -851,7 +1041,7 @@ func (c *VLBProvider) ensurePolicy(lbID, listenerID, policyName string, policyOp
 				RedirectPoolID: policyOpt.RedirectPoolID,
 				Rules:          policyOpt.Rules,
 			}
-			err := c.api.UpdatePolicy(c.vLBSC, c.extraInfo.ProjectID, lbID, listenerID, pol.UUID, updateOpts)
+			err := c.api.UpdatePolicy(c.vLBSC, c.GetProjectID(), lbID, listenerID, pol.UUID, updateOpts)
 			if err != nil {
 				logrus.Fatal("error when update policy", err)
 				return nil, err
@@ -859,7 +1049,7 @@ func (c *VLBProvider) ensurePolicy(lbID, listenerID, policyName string, policyOp
 		}
 	}
 	c.WaitForLBActive(lbID)
-	// pol, err = c.api.GetPolicy(c.vLBSC, c.extraInfo.ProjectID, lbID, listenerID, pol.UUID)
+	// pol, err = c.api.GetPolicy(c.vLBSC, c.GetProjectID(), lbID, listenerID, pol.UUID)
 	// if err != nil {
 	// 	logrus.Fatal("error when get policy", err)
 	// 	return nil, err
@@ -870,7 +1060,7 @@ func (c *VLBProvider) ensurePolicy(lbID, listenerID, policyName string, policyOp
 // API
 func (c *VLBProvider) ListLoadBalancerBySubnetID() {
 	klog.Infof("--------------- ListLoadBalancerBySubnetID -------------------")
-	c.lbsInSubnet, _ = c.api.ListLBBySubnetID(c.vLBSC, c.extraInfo.ProjectID, c.cluster.SubnetID)
+	c.lbsInSubnet, _ = c.api.ListLBBySubnetID(c.vLBSC, c.GetProjectID(), c.cluster.SubnetID)
 	for _, lb := range c.lbsInSubnet {
 		klog.Infof("lb: %v", lb)
 	}
@@ -878,19 +1068,19 @@ func (c *VLBProvider) ListLoadBalancerBySubnetID() {
 
 func (c *VLBProvider) WaitForLBActive(lbID string) *lObjects.LoadBalancer {
 	for {
-		lb, err := c.api.GetLB(c.vLBSC, c.extraInfo.ProjectID, lbID)
+		lb, err := c.api.GetLB(c.vLBSC, c.GetProjectID(), lbID)
 		if err != nil {
 			logrus.Errorln("error when get lb status: ", err)
 		} else if lb.Status == "ACTIVE" {
 			return lb
 		}
 		logrus.Infoln("------- wait for lb active:", lb.Status, "-------")
-		time.Sleep(5 * time.Second)
+		time.Sleep(10 * time.Second)
 	}
 }
 
 func (c *VLBProvider) FindPoolByName(lbID, name string) (*lObjects.Pool, error) {
-	pools, err := c.api.ListPoolOfLB(c.vLBSC, c.extraInfo.ProjectID, lbID)
+	pools, err := c.api.ListPoolOfLB(c.vLBSC, c.GetProjectID(), lbID)
 	if err != nil {
 		return nil, err
 	}
@@ -903,7 +1093,7 @@ func (c *VLBProvider) FindPoolByName(lbID, name string) (*lObjects.Pool, error) 
 }
 
 func (c *VLBProvider) FindListenerByName(lbID, name string) (*lObjects.Listener, error) {
-	listeners, err := c.api.ListListenerOfLB(c.vLBSC, c.extraInfo.ProjectID, lbID)
+	listeners, err := c.api.ListListenerOfLB(c.vLBSC, c.GetProjectID(), lbID)
 	if err != nil {
 		return nil, err
 	}
@@ -913,4 +1103,8 @@ func (c *VLBProvider) FindListenerByName(lbID, name string) (*lObjects.Listener,
 		}
 	}
 	return nil, errors.ErrNotFound
+}
+
+func (c *VLBProvider) GetProjectID() string {
+	return c.extraInfo.ProjectID
 }

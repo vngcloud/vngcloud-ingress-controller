@@ -5,6 +5,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/coe/v2/cluster"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/certificates"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/listener"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/policy"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
@@ -254,6 +255,44 @@ func (c *API) DeletePolicy(vSC *client.ServiceClient, projectID, lbID, listenerI
 	opt.PolicyID = policyID
 	err := policy.Delete(vSC, opt)
 	logrus.Infoln("*****API__DeletePolicy: ", "err: ", err)
+	return err
+}
+
+// CERTIFICATE
+func (c *API) ImportCertificate(vSC *client.ServiceClient, projectID string, opt *certificates.ImportOpts) (*lObjects.Certificate, error) {
+	logrus.Infoln("*****API__ImportCertificate: ", "projectID: ", projectID, "opt: ", opt)
+	opt.ProjectID = projectID
+	resp, err := certificates.Import(vSC, opt)
+	logrus.Infoln("*****API__ImportCertificate: ", "resp: ", resp, "err: ", err)
+	return resp, err
+}
+
+func (c *API) ListCertificate(vSC *client.ServiceClient, projectID string) ([]*lObjects.Certificate, error) {
+	logrus.Infoln("*****API__ListCertificate: ", "projectID: ", projectID)
+	opt := &certificates.ListOpts{}
+	opt.ProjectID = projectID
+	resp, err := certificates.List(vSC, opt)
+	logrus.Infoln("*****API__ListCertificate: ", "resp: ", resp, "err: ", err)
+	return resp, err
+}
+
+func (c *API) GetCertificate(vSC *client.ServiceClient, projectID, certificateID string) (*lObjects.Certificate, error) {
+	logrus.Infoln("*****API__GetCertificate: ", "projectID: ", projectID, "certificateID: ", certificateID)
+	opt := &certificates.GetOpts{}
+	opt.ProjectID = projectID
+	opt.CaID = certificateID
+	resp, err := certificates.Get(vSC, opt)
+	logrus.Infoln("*****API__GetCertificate: ", "resp: ", resp, "err: ", err)
+	return resp, err
+}
+
+func (c *API) DeleteCertificate(vSC *client.ServiceClient, projectID, certificateID string) error {
+	logrus.Infoln("*****API__DeleteCertificate: ", "projectID: ", projectID, "certificateID: ", certificateID)
+	opt := &certificates.DeleteOpts{}
+	opt.ProjectID = projectID
+	opt.CaID = certificateID
+	err := certificates.Delete(vSC, opt)
+	logrus.Infoln("*****API__DeleteCertificate: ", "err: ", err)
 	return err
 }
 

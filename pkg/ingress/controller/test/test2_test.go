@@ -8,7 +8,6 @@ import (
 )
 
 func TestHttps(t *testing.T) {
-
 	const dangbh2 = `
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -22,7 +21,7 @@ spec:
   tls:
     - hosts:
         - https-example.foo.com
-      secretName: secret-b699b868-ca06-4116-8f14-4ea6bedcfb73
+      secretName: secret-annd2
   rules:
     - host: https-example.foo.com
       http:
@@ -36,8 +35,8 @@ spec:
                   number: 8080
 `
 	const (
-		LB_ID = "lb-67cd0bbc-4c27-4e5d-b728-9f416a509577"
-		IP    = "180.93.181.81"
+		LB_ID = "lb-17ee809f-fe17-4881-aea5-3cba65eac326"
+		IP    = "180.93.181.208"
 	)
 
 	client, _ := NewVNGCLOUDClient()
@@ -62,4 +61,10 @@ spec:
 
 	resp = MakeRequest(fmt.Sprintf("https://%s/webserver", IP), "https-example.foo.com", headers)
 	assert.Equal(t, "webserver-6c7fb64575-lsxxn\n", resp)
+
+	resp = MakeRequest(fmt.Sprintf("https://%s/webserver", IP), "example.foo.com", headers)
+	assert.Equal(t, SERVICE_UNAVAILABLE, resp)
+
+	DeleteYAML(yaml)
+	WaitLBActive(client, LB_ID)
 }

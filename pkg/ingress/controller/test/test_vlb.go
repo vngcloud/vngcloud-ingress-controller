@@ -82,12 +82,12 @@ func ClearLB(client *client.ServiceClient, lbID string) {
 			}
 			WaitLBActive(client, lbID)
 		}
-		// err = API.DeleteListener(client, PROJECT_ID, lbID, li.UUID)
-		// if err != nil {
-		// 	logrus.Errorf("Error deleting listener: %v\n", err)
-		// 	return
-		// }
-		// WaitLBActive(client, lbID)
+		err = API.DeleteListener(client, PROJECT_ID, lbID, li.UUID)
+		if err != nil {
+			logrus.Errorf("Error deleting listener: %v\n", err)
+			return
+		}
+		WaitLBActive(client, lbID)
 	}
 
 	pools, err := API.ListPoolOfLB(client, PROJECT_ID, lbID)

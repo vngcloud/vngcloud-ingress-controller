@@ -122,6 +122,8 @@ const (
 	// IngressSecretKeyName is private key name defined in the secret data.
 	IngressSecretKeyName = "tls.key"
 
-	// BarbicanSecretNameTemplate is the name format string to create Barbican secret.
-	BarbicanSecretNameTemplate = "kube_ingress_%s_%s_%s_%s"
+	// VNGCLOUDCertificateNameTemplate is the name format string to create certificate.
+	// It is highly recommended to use your domain name as friendly name
+	// Only letters (a-z, A-Z, 0-9, '.', '-') are allowed. Your input data length must be between 5 and 50.
+	VNGCLOUDCertificateNameTemplate = "annd2-%s-%s"
 )

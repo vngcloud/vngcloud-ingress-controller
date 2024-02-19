@@ -40,13 +40,24 @@ type ListenerExpander struct {
 	UUID string
 	listener.CreateOpts
 }
+type CertificateExpander struct {
+	UUID       string
+	Name       string
+	Version    string
+	SecretName string
+}
+
 type IngressInspect struct {
-	defaultPoolName    string
-	defaultPoolId      string
-	defaultPoolMembers []*pool.Member
-	PolicyExpander     []*PolicyExpander
-	PoolExpander       []*PoolExpander
-	ListenerExpander   []*ListenerExpander
+	defaultPoolName string
+	defaultPoolId   string
+	name            string
+	namespace       string
+
+	defaultPoolMembers  []*pool.Member
+	PolicyExpander      []*PolicyExpander
+	PoolExpander        []*PoolExpander
+	ListenerExpander    []*ListenerExpander
+	CertificateExpander []*CertificateExpander
 }
 
 func (ing *IngressInspect) Print() {

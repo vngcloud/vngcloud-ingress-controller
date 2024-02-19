@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -13,12 +14,15 @@ import (
 	lObjects "github.com/vngcloud/vngcloud-go-sdk/vngcloud/objects"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/identity/v2/extensions/oauth2"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/identity/v2/tokens"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/certificates"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/listener"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/loadbalancer"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/policy"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
 	apiv1 "k8s.io/api/core/v1"
 	nwv1 "k8s.io/api/networking/v1"
+	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/cloud-provider-openstack/pkg/ingress/config"
 	"k8s.io/cloud-provider-openstack/pkg/ingress/consts"
 	"k8s.io/cloud-provider-openstack/pkg/ingress/utils/errors"
@@ -73,6 +77,7 @@ type VLBProvider struct {
 	extraInfo    *ExtraInfo
 	metadataOpts metadata.Opts
 	api          API
+	kubeClient   kubernetes.Interface
 }
 
 func (c *VLBProvider) Init() error {
@@ -199,45 +204,45 @@ func (c *VLBProvider) DeleteLoadbalancer(con *Controller, ing *nwv1.Ingress) err
 		logrus.Errorln("error when compare ingress", err)
 		return err
 	}
-	// can delete lb instance here ......................
-	listeners, err := c.api.ListListenerOfLB(c.vLBSC, c.GetProjectID(), lbID)
-	if err != nil {
-		logrus.Errorln("error when list listener of lb", err)
-		return err
-	}
-	for _, lis := range listeners {
-		policies, err := c.api.ListPolicyOfListener(c.vLBSC, c.GetProjectID(), lbID, lis.UUID)
-		if err != nil {
-			logrus.Errorln("error when list policy of listener", err)
-			return err
-		}
-		if len(policies) == 0 {
-			err = c.api.DeleteListener(c.vLBSC, c.GetProjectID(), lbID, lis.UUID)
-			if err != nil {
-				logrus.Errorln("error when delete listener", err)
-				return err
-			}
-			c.WaitForLBActive(lbID)
-		}
-	}
-	pools, err := c.api.ListPoolOfLB(c.vLBSC, c.GetProjectID(), lbID)
-	if err != nil {
-		logrus.Errorln("error when list pool of lb", err)
-		return err
-	}
-	for _, p := range pools {
-		if p.Name == consts.DEFAULT_NAME_DEFAULT_POOL {
-			if len(p.Members) == 0 {
-				err = c.api.DeletePool(c.vLBSC, c.GetProjectID(), lbID, p.UUID)
-				if err != nil {
-					logrus.Errorln("error when delete pool", err)
-					return err
-				}
-				c.WaitForLBActive(lbID)
-			}
-			break
-		}
-	}
+	// // can delete lb instance here ......................
+	// listeners, err := c.api.ListListenerOfLB(c.vLBSC, c.GetProjectID(), lbID)
+	// if err != nil {
+	// 	logrus.Errorln("error when list listener of lb", err)
+	// 	return err
+	// }
+	// for _, lis := range listeners {
+	// 	policies, err := c.api.ListPolicyOfListener(c.vLBSC, c.GetProjectID(), lbID, lis.UUID)
+	// 	if err != nil {
+	// 		logrus.Errorln("error when list policy of listener", err)
+	// 		return err
+	// 	}
+	// 	if len(policies) == 0 {
+	// 		err = c.api.DeleteListener(c.vLBSC, c.GetProjectID(), lbID, lis.UUID)
+	// 		if err != nil {
+	// 			logrus.Errorln("error when delete listener", err)
+	// 			return err
+	// 		}
+	// 		c.WaitForLBActive(lbID)
+	// 	}
+	// }
+	// pools, err := c.api.ListPoolOfLB(c.vLBSC, c.GetProjectID(), lbID)
+	// if err != nil {
+	// 	logrus.Errorln("error when list pool of lb", err)
+	// 	return err
+	// }
+	// for _, p := range pools {
+	// 	if p.Name == consts.DEFAULT_NAME_DEFAULT_POOL {
+	// 		if len(p.Members) == 0 {
+	// 			err = c.api.DeletePool(c.vLBSC, c.GetProjectID(), lbID, p.UUID)
+	// 			if err != nil {
+	// 				logrus.Errorln("error when delete pool", err)
+	// 				return err
+	// 			}
+	// 			c.WaitForLBActive(lbID)
+	// 		}
+	// 		break
+	// 	}
+	// }
 	return nil
 }
 
@@ -254,6 +259,9 @@ func (c *VLBProvider) mapHostTLS(ing *nwv1.Ingress) (map[string]bool, []string) 
 	return m, certArr
 }
 
+// InspectCurrentLB inspects the current load balancer (LB) identified by lbID.
+// It retrieves information about the listeners, pools, and policies associated with the LB.
+// The function returns an IngressInspect struct containing the inspected data, or an error if the inspection fails.
 func (c *VLBProvider) InspectCurrentLB(lbID string) (*IngressInspect, error) {
 	expectPolicyName := make([]*PolicyExpander, 0)
 	expectPoolName := make([]*PoolExpander, 0)
@@ -339,9 +347,10 @@ func (c *VLBProvider) InspectCurrentLB(lbID string) (*IngressInspect, error) {
 func (c *VLBProvider) InspectIngress(con *Controller, ing *nwv1.Ingress) (*IngressInspect, error) {
 	if ing == nil {
 		return &IngressInspect{
-			PolicyExpander:   make([]*PolicyExpander, 0),
-			PoolExpander:     make([]*PoolExpander, 0),
-			ListenerExpander: make([]*ListenerExpander, 0),
+			PolicyExpander:      make([]*PolicyExpander, 0),
+			PoolExpander:        make([]*PoolExpander, 0),
+			ListenerExpander:    make([]*ListenerExpander, 0),
+			CertificateExpander: make([]*CertificateExpander, 0),
 		}, nil
 	}
 	klog.Infof("----------------- InspectIngress(%s/%s) ------------------", ing.Namespace, ing.Name)
@@ -351,6 +360,29 @@ func (c *VLBProvider) InspectIngress(con *Controller, ing *nwv1.Ingress) (*Ingre
 	expectPolicyName := make([]*PolicyExpander, 0)
 	expectPoolName := make([]*PoolExpander, 0)
 	expectListenerName := make([]*ListenerExpander, 0)
+	expectCertificateName := make([]*CertificateExpander, 0)
+
+	// convert to vngcloud certificate
+	for _, tls := range ing.Spec.TLS {
+		// check if certificate already exist
+		secret, err := c.kubeClient.CoreV1().Secrets(ing.Namespace).Get(context.TODO(), tls.SecretName, apimetav1.GetOptions{})
+		if err != nil {
+			logrus.Errorf("error when get secret: %s in ns %s: %v", tls.SecretName, ing.Namespace, err)
+			return nil, err
+		}
+		version := secret.ObjectMeta.ResourceVersion
+
+		fullName := fmt.Sprintf("%s-%s-%s-%s", c.GetClusterName(), ing.Namespace, ing.Name, tls.SecretName)
+		hashName := HashString(fullName)
+		name := fmt.Sprintf(VNGCLOUDCertificateNameTemplate, hashName[:10], version)
+		secretName := tls.SecretName
+		expectCertificateName = append(expectCertificateName, &CertificateExpander{
+			Name:       name,
+			Version:    version,
+			SecretName: secretName,
+			UUID:       "",
+		})
+	}
 
 	GetPoolExpander := func(service *nwv1.IngressServiceBackend) (*PoolExpander, error) {
 		serviceName := fmt.Sprintf("%s/%s", ing.ObjectMeta.Namespace, service.Name)
@@ -384,10 +416,13 @@ func (c *VLBProvider) InspectIngress(con *Controller, ing *nwv1.Ingress) (*Ingre
 	}
 
 	// check if have default pool
-	ingressInspect := &IngressInspect{}
-	ingressInspect.defaultPoolId = ""
-	ingressInspect.defaultPoolName = consts.DEFAULT_NAME_DEFAULT_POOL
-	ingressInspect.defaultPoolMembers = make([]*pool.Member, 0)
+	ingressInspect := &IngressInspect{
+		name:               ing.Name,
+		namespace:          ing.Namespace,
+		defaultPoolId:      "",
+		defaultPoolName:    consts.DEFAULT_NAME_DEFAULT_POOL,
+		defaultPoolMembers: make([]*pool.Member, 0),
+	}
 	if ing.Spec.DefaultBackend != nil && ing.Spec.DefaultBackend.Service != nil {
 		defaultPoolExpander, err := GetPoolExpander(ing.Spec.DefaultBackend.Service)
 		if err != nil {
@@ -457,6 +492,7 @@ func (c *VLBProvider) InspectIngress(con *Controller, ing *nwv1.Ingress) (*Ingre
 	ingressInspect.PolicyExpander = expectPolicyName
 	ingressInspect.PoolExpander = expectPoolName
 	ingressInspect.ListenerExpander = expectListenerName
+	ingressInspect.CertificateExpander = expectCertificateName
 	return ingressInspect, nil
 }
 
@@ -489,7 +525,6 @@ func (c *VLBProvider) EnsureLoadBalancer(con *Controller, oldIng, ing *nwv1.Ingr
 
 // find or create lb
 func (c *VLBProvider) ensureLoadBalancer(ing *nwv1.Ingress) (string, error) {
-
 	lbID, err := c.GetLoadbalancerIDByIngress(ing)
 	if err != nil {
 		if err == errors.ErrLoadBalancerIDNotFoundAnnotation {
@@ -537,6 +572,40 @@ func (c *VLBProvider) ActionCompareIngress(lbID string, oldIngExpander, newIngEx
 	logrus.Infoln("########################## newIngExpander:")
 	newIngExpander.Print()
 
+	// ensure certificate
+	EnsureCertificate := func(ing *IngressInspect) error {
+		lCert, _ := c.api.ListCertificate(c.vLBSC, c.GetProjectID())
+		for _, cert := range ing.CertificateExpander {
+			// check if certificate already exist
+			for _, lc := range lCert {
+				if lc.Name == cert.Name {
+					cert.UUID = lc.UUID
+					break
+				}
+			}
+			if cert.UUID != "" {
+				continue
+			}
+			importOpts, err := c.toVngCloudCertificate(cert.SecretName, ing.namespace, cert.Name)
+			if err != nil {
+				logrus.Errorln("error when toVngCloudCertificate", err)
+				return err
+			}
+			newCert, err := c.api.ImportCertificate(c.vLBSC, c.GetProjectID(), importOpts)
+			if err != nil {
+				logrus.Errorln("error when import certificate", err)
+				return err
+			}
+			cert.UUID = newCert.UUID
+		}
+		return nil
+	}
+	err = EnsureCertificate(newIngExpander)
+	if err != nil {
+		logrus.Errorln("error when ensure certificate", err)
+		return nil, err
+	}
+
 	// ensure default pool
 	defaultPool, err := c.ensurePool(lb.UUID, consts.DEFAULT_NAME_DEFAULT_POOL, false)
 	if err != nil {
@@ -544,7 +613,6 @@ func (c *VLBProvider) ActionCompareIngress(lbID string, oldIngExpander, newIngEx
 		return nil, err
 	}
 	// ensure default pool member
-
 	_, err = c.ensureDefaultPoolMember(lb.UUID, defaultPool.UUID, oldIngExpander.defaultPoolMembers, newIngExpander.defaultPoolMembers)
 	if err != nil {
 		logrus.Errorln("error when ensure default pool member", err)
@@ -569,7 +637,19 @@ func (c *VLBProvider) ActionCompareIngress(lbID string, oldIngExpander, newIngEx
 	mapListenerNameIndex := make(map[string]int)
 	for listenerIndex, ilistener := range newIngExpander.ListenerExpander {
 		ilistener.CreateOpts.DefaultPoolId = defaultPool.UUID
-
+		// change cert name by uuid
+		if ilistener.CreateOpts.ListenerProtocol == consts.OPT_LISTENER_HTTPS_DEFAULT.ListenerProtocol {
+			mapCertNameUUID := make(map[string]string)
+			for _, cert := range newIngExpander.CertificateExpander {
+				mapCertNameUUID[cert.SecretName] = cert.UUID
+			}
+			uuidArr := []string{}
+			for _, certName := range *ilistener.CreateOpts.CertificateAuthorities {
+				uuidArr = append(uuidArr, mapCertNameUUID[certName])
+			}
+			ilistener.CreateOpts.CertificateAuthorities = &uuidArr
+			ilistener.CreateOpts.DefaultCertificateAuthority = &uuidArr[0]
+		}
 		lis, err := c.ensureListener(lb.UUID, ilistener.CreateOpts.ListenerName, ilistener.CreateOpts, false)
 		if err != nil {
 			logrus.Errorln("error when ensure listener:", ilistener.CreateOpts.ListenerName, err)
@@ -916,7 +996,7 @@ func (c *VLBProvider) ensureListener(lbID, lisName string, listenerOpts listener
 			listenerOpts.ListenerName = lisName
 			_, err := c.api.CreateListener(c.vLBSC, c.GetProjectID(), lbID, &listenerOpts)
 			if err != nil {
-				logrus.Fatal("error when create listener", err)
+				logrus.Errorln("error when create listener", err)
 				return nil, err
 			}
 			c.WaitForLBActive(lbID)
@@ -938,17 +1018,31 @@ func (c *VLBProvider) ensureListener(lbID, lisName string, listenerOpts listener
 			return nil, err
 		}
 	} else {
+		updateOpts := &listener.UpdateOpts{
+			AllowedCidrs:                lis.AllowedCidrs,
+			DefaultPoolId:               lis.DefaultPoolId,
+			TimeoutClient:               lis.TimeoutClient,
+			TimeoutConnection:           lis.TimeoutConnection,
+			TimeoutMember:               lis.TimeoutMember,
+			Headers:                     lis.Headers,
+			DefaultCertificateAuthority: lis.DefaultCertificateAuthority,
+			ClientCertificate:           lis.ClientCertificateAuthentication,
+		}
+		isUpdate := false
+
 		if lis.DefaultPoolId != listenerOpts.DefaultPoolId && listenerOpts.DefaultPoolId != "" {
-			updateOpts := &listener.UpdateOpts{
-				AllowedCidrs:                listenerOpts.AllowedCidrs,
-				DefaultPoolId:               listenerOpts.DefaultPoolId,
-				TimeoutClient:               listenerOpts.TimeoutClient,
-				TimeoutConnection:           listenerOpts.TimeoutConnection,
-				TimeoutMember:               listenerOpts.TimeoutMember,
-				Headers:                     lis.Headers,
-				DefaultCertificateAuthority: lis.DefaultCertificateAuthority,
-				ClientCertificate:           lis.ClientCertificateAuthentication,
-			}
+			updateOpts.DefaultPoolId = listenerOpts.DefaultPoolId
+			isUpdate = true
+		}
+
+		if listenerOpts.DefaultCertificateAuthority != nil && *(lis.DefaultCertificateAuthority) != *(listenerOpts.DefaultCertificateAuthority) {
+			updateOpts.DefaultCertificateAuthority = listenerOpts.DefaultCertificateAuthority
+			isUpdate = true
+		}
+
+		// update cert SNI here .......................................................
+
+		if isUpdate {
 			err := c.api.UpdateListener(c.vLBSC, c.GetProjectID(), lbID, lis.UUID, updateOpts)
 			if err != nil {
 				logrus.Error("error when update listener: ", err)
@@ -986,7 +1080,7 @@ func (c *VLBProvider) ensurePolicy(lbID, listenerID, policyName string, policyOp
 			}
 			newPolicy, err := c.api.CreatePolicy(c.vLBSC, c.GetProjectID(), lbID, listenerID, policyOpt)
 			if err != nil {
-				logrus.Fatal("error when create policy", err)
+				logrus.Errorln("error when create policy", err)
 				return nil, err
 			}
 			pol = newPolicy
@@ -1004,7 +1098,7 @@ func (c *VLBProvider) ensurePolicy(lbID, listenerID, policyName string, policyOp
 		// get policy and update policy
 		newpolicy, err := c.api.GetPolicy(c.vLBSC, c.GetProjectID(), lbID, listenerID, pol.UUID)
 		if err != nil {
-			logrus.Fatal("error when get policy", err)
+			logrus.Errorln("error when get policy", err)
 			return nil, err
 		}
 		comparePolicy := func(p2 *lObjects.Policy) bool {
@@ -1043,17 +1137,12 @@ func (c *VLBProvider) ensurePolicy(lbID, listenerID, policyName string, policyOp
 			}
 			err := c.api.UpdatePolicy(c.vLBSC, c.GetProjectID(), lbID, listenerID, pol.UUID, updateOpts)
 			if err != nil {
-				logrus.Fatal("error when update policy", err)
+				logrus.Errorln("error when update policy", err)
 				return nil, err
 			}
 		}
 	}
 	c.WaitForLBActive(lbID)
-	// pol, err = c.api.GetPolicy(c.vLBSC, c.GetProjectID(), lbID, listenerID, pol.UUID)
-	// if err != nil {
-	// 	logrus.Fatal("error when get policy", err)
-	// 	return nil, err
-	// }
 	return pol, nil
 }
 
@@ -1107,4 +1196,47 @@ func (c *VLBProvider) FindListenerByName(lbID, name string) (*lObjects.Listener,
 
 func (c *VLBProvider) GetProjectID() string {
 	return c.extraInfo.ProjectID
+}
+
+func (c *VLBProvider) GetClusterName() string {
+	return c.config.ClusterName
+}
+
+func (c *VLBProvider) toVngCloudCertificate(secretName string, namespace string, generateName string) (*certificates.ImportOpts, error) {
+	secret, err := c.kubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, apimetav1.GetOptions{})
+	if err != nil {
+		logrus.Errorln("error when get secret", err)
+		return nil, err
+	}
+
+	var keyDecode []byte
+	if keyBytes, isPresent := secret.Data[IngressSecretKeyName]; isPresent {
+		keyDecode = keyBytes
+		if err != nil {
+			logrus.Errorln("error when decode key", err, string(keyBytes))
+			return nil, err
+		}
+	} else {
+		return nil, fmt.Errorf("%s key doesn't exist in the secret %s", IngressSecretKeyName, secretName)
+	}
+
+	var certDecode []byte
+	if certBytes, isPresent := secret.Data[IngressSecretCertName]; isPresent {
+		certDecode = certBytes
+		if err != nil {
+			logrus.Errorln("error when decode cert", err, string(certBytes))
+			return nil, err
+		}
+	} else {
+		return nil, fmt.Errorf("%s key doesn't exist in the secret %s", IngressSecretCertName, secretName)
+	}
+
+	return &certificates.ImportOpts{
+		Name:             generateName,
+		Type:             certificates.ImportOptsTypeOptTLS,
+		Certificate:      string(certDecode),
+		PrivateKey:       consts.PointerOf[string](string(keyDecode)),
+		CertificateChain: consts.PointerOf[string](""),
+		Passphrase:       consts.PointerOf[string](""),
+	}, nil
 }

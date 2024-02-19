@@ -31,8 +31,8 @@ spec:
                   number: 8080
 `
 	const (
-		LB_ID = "lb-67cd0bbc-4c27-4e5d-b728-9f416a509577"
-		IP    = "180.93.181.81"
+		LB_ID = "lb-17ee809f-fe17-4881-aea5-3cba65eac326"
+		IP    = "180.93.181.208"
 	)
 
 	client, _ := NewVNGCLOUDClient()
@@ -55,4 +55,7 @@ spec:
 
 	resp = MakeRequest(fmt.Sprintf("http://%s/web", IP), "", headers)
 	assert.Equal(t, "webserver-6c7fb64575-lsxxn\n", resp)
+
+	DeleteYAML(yaml)
+	WaitLBActive(client, LB_ID)
 }

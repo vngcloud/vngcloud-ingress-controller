@@ -11,7 +11,7 @@ require (
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.4
-	github.com/vngcloud/vngcloud-go-sdk v0.0.0-20240201085304-6cc64bc996d5
+	github.com/vngcloud/vngcloud-go-sdk v0.0.0-20240205030912-c6326b88e5b8
 	golang.org/x/sys v0.16.0
 	k8s.io/api v0.29.0
 	k8s.io/apimachinery v0.29.0

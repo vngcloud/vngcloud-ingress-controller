@@ -290,8 +290,8 @@ github.com/stretchr/testify v1.8.4 h1:CcVxjf3Q8PM0mHUKJCdn+eZZtm5yQwehR5yeSVQQcU
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/subosito/gotenv v1.4.2 h1:X1TuBLAMDFbaTAChgCBLu3DU3UPyELpnF2jjJ2cz/S8=
 github.com/subosito/gotenv v1.4.2/go.mod h1:ayKnFf/c6rvx/2iiLrJUk1e6plDbT3edrFNGqEflhK0=
-github.com/vngcloud/vngcloud-go-sdk v0.0.0-20240201085304-6cc64bc996d5 h1:uYqR6Gri6keSGBYIDzAhXPl06ezuj6f5mkxMXqd+QS0=
-github.com/vngcloud/vngcloud-go-sdk v0.0.0-20240201085304-6cc64bc996d5/go.mod h1:ooZo+kYuaDbn1HzS8KUEORKGj68yEtDx1XLJU06Xw4k=
+github.com/vngcloud/vngcloud-go-sdk v0.0.0-20240205030912-c6326b88e5b8 h1:x3nwnI964KChlWFPXL6zH8qDABDKNGWlk3QpjwBGPEA=
+github.com/vngcloud/vngcloud-go-sdk v0.0.0-20240205030912-c6326b88e5b8/go.mod h1:ooZo+kYuaDbn1HzS8KUEORKGj68yEtDx1XLJU06Xw4k=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.32/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=

@@ -28,11 +28,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/cloud-provider-openstack/pkg/ingress/config"
-	"k8s.io/cloud-provider-openstack/pkg/ingress/utils/errors"
-
-	// "k8s.io/cloud-provider-openstack/pkg/ingress/controller/openstack"
 	"k8s.io/cloud-provider-openstack/pkg/ingress/utils"
-	// cpoerrors "k8s.io/cloud-provider-openstack/pkg/util/errors"
 	klog "k8s.io/klog/v2"
 )
 
@@ -95,7 +91,8 @@ func NewController(conf config.Config) *Controller {
 
 	controller := &Controller{
 		lbProvider: &VLBProvider{
-			config: &conf,
+			config:     &conf,
+			kubeClient: kubeClient,
 		},
 
 		config:     &conf,
@@ -262,25 +259,11 @@ func (c *Controller) nodeSyncLoop() {
 		}
 
 		logrus.WithFields(logrus.Fields{"ingress": ing.Name, "namespace": ing.Namespace}).Debug("Starting to handle ingress")
-
-		// if user pass lb id in annotation, get the lbID from annotation
-		lbID, err := c.lbProvider.GetLoadbalancerIDByIngress(&ing)
+		err := c.ensureIngress(nil, &ing)
 		if err != nil {
-			if err == errors.ErrLoadBalancerIDNotFoundAnnotation {
-				logrus.WithFields(logrus.Fields{"id": lbID}).Errorf("Failed to retrieve loadbalancer from VNGCLOUD: %v", err)
-			}
-
-			// If lb doesn't exist or error occurred, continue
+			logrus.WithFields(logrus.Fields{"ingress": ing.Name, "namespace": ing.Namespace}).Error("Failed to handle ingress")
 			continue
 		}
-		loadbalancer, err := c.lbProvider.GetLoadbalancerByID(lbID)
-
-		if err = c.lbProvider.UpdateLoadbalancerMembers(loadbalancer.ID, readyWorkerNodes); err != nil {
-			logrus.WithFields(logrus.Fields{"ingress": ing.Name}).Error("Failed to handle ingress")
-			continue
-		}
-
-		logrus.WithFields(logrus.Fields{"ingress": ing.Name, "namespace": ing.Namespace}).Info("Finished to handle ingress")
 	}
 
 	c.knownNodes = readyWorkerNodes

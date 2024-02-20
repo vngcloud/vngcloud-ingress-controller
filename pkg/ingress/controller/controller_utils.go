@@ -45,6 +45,11 @@ func IsValid(ing *nwv1.Ingress) bool {
 		log.WithFields(log.Fields{
 			"ingress_name": ing.Name, "ingress_ns": ing.Namespace,
 		}).Info("annotation not present in ingress")
+
+		// check in spec
+		if ing.Spec.IngressClassName != nil {
+			return *ing.Spec.IngressClassName == IngressClass
+		}
 		return false
 	}
 

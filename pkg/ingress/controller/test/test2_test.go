@@ -14,8 +14,7 @@ kind: Ingress
 metadata:
   name: dangbh2
   annotations:
-    kubernetes.io/ingress.class: "openstack"
-    octavia.ingress.kubernetes.io/internal: "false"
+    kubernetes.io/ingress.class: "vngcloud"
     vngcloud.vngcloud.vn/load-balancer-id: "%s"
 spec:
   tls:

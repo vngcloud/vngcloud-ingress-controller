@@ -368,6 +368,12 @@ func (c *Controller) ensureIngress(oldIng, ing *nwv1.Ingress) error {
 	if err != nil {
 		return err
 	}
+	vip := lb.Address
+	newIng, err := c.updateIngressStatus(ing, vip)
+	if err != nil {
+		return err
+	}
+	c.recorder.Event(ing, apiv1.EventTypeNormal, "Updated", fmt.Sprintf("Successfully associated IP address %s to ingress %s", vip, newIng.Name))
 	klog.Infoln(lb)
 	return nil
 }
@@ -394,6 +400,7 @@ func (c *Controller) GetNodeMembersAddr() ([]string, error) {
 }
 
 func (c *Controller) updateIngressStatus(ing *nwv1.Ingress, vip string) (*nwv1.Ingress, error) {
+	klog.Infoln("------------ updateIngressStatus() ------------")
 	newState := new(nwv1.IngressLoadBalancerStatus)
 	newState.Ingress = []nwv1.IngressLoadBalancerIngress{{IP: vip}}
 	newIng := ing.DeepCopy()

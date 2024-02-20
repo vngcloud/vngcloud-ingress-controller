@@ -944,9 +944,7 @@ func (c *VLBProvider) ensurePoolMember(lbID, poolID string, members []*pool.Memb
 		return false
 	}
 	comparePoolMembers := func(p1 []*pool.Member, p2 []*lObjects.Member) bool {
-		if len(p1) != len(p2) {
-			return false
-		}
+		// check if member exist in current pool
 		for _, p := range p1 {
 			if !checkIfExist(p2, p) {
 				logrus.Infof("member in pool not exist: %v", p)
@@ -1033,11 +1031,13 @@ func (c *VLBProvider) ensureListener(lbID, lisName string, listenerOpts listener
 		if lis.DefaultPoolId != listenerOpts.DefaultPoolId && listenerOpts.DefaultPoolId != "" {
 			updateOpts.DefaultPoolId = listenerOpts.DefaultPoolId
 			isUpdate = true
+			klog.Infof("listener need update default pool id: %s", listenerOpts.DefaultPoolId)
 		}
 
 		if listenerOpts.DefaultCertificateAuthority != nil && *(lis.DefaultCertificateAuthority) != *(listenerOpts.DefaultCertificateAuthority) {
 			updateOpts.DefaultCertificateAuthority = listenerOpts.DefaultCertificateAuthority
 			isUpdate = true
+			klog.Infof("listener need update default certificate authority: %s", *listenerOpts.DefaultCertificateAuthority)
 		}
 
 		// update cert SNI here .......................................................

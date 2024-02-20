@@ -73,7 +73,7 @@ const (
 	IngressKey = "kubernetes.io/ingress.class"
 
 	// IngressClass specifies which Ingress class we accept
-	IngressClass = "openstack"
+	IngressClass = "vngcloud"
 
 	// LabelNodeExcludeLB specifies that a node should not be used to create a Loadbalancer on
 	// https://github.com/kubernetes/cloud-provider/blob/25867882d509131a6fdeaf812ceebfd0f19015dd/controllers/service/controller.go#L673

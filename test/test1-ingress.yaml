@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dangbh2
+  annotations:
+    kubernetes.io/ingress.class: "vngcloud"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /web
+            pathType: Exact
+            backend:
+              service:
+                name: webserver
+                port:
+                  number: 8080
+    - host: kkk.foo.com
+      http:
+        paths:
+          - path: /goapp
+            pathType: Exact
+            backend:
+              service:
+                name: goapp-debug
+                port:
+                  number: 8888
+          - path: /webserver
+            pathType: Exact
+            backend:
+              service:
+                name: webserver
+                port:
+                  number: 8080

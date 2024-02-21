@@ -80,6 +80,9 @@ type VLBProvider struct {
 	kubeClient   kubernetes.Interface
 
 	SecretTrackers []*SecretTracker
+
+	// it have a bug when update default pool member, set this to reapply when update pool member
+	isUpdateDefaultPool bool
 }
 type SecretTracker struct {
 	namespace string
@@ -460,7 +463,7 @@ func (c *VLBProvider) InspectIngress(con *Controller, ing *nwv1.Ingress) (*Ingre
 				Port:        nodePort,
 				Backup:      false,
 				Weight:      1,
-				Name:        poolName + "_" + addr,
+				Name:        poolName,
 				MonitorPort: nodePort,
 			})
 		}
@@ -958,6 +961,18 @@ func (c *VLBProvider) ensureDefaultPoolMember(lbID, poolID string, oldMembers, n
 			Name:        m.Name,
 			MonitorPort: m.MonitorPort,
 		}
+		// remove all member in needCreate and add later (maybe member is scale down, then redundant)
+		isAddLater := false
+		for _, nc := range needCreate {
+			if strings.HasPrefix(m.Name, nc.Name) {
+				isAddLater = true
+				break
+			}
+		}
+		if isAddLater {
+			continue
+		}
+
 		if !checkIfExist(needDelete, _m) {
 			updateMember = append(updateMember, _m)
 		}
@@ -993,6 +1008,7 @@ func (c *VLBProvider) ensureDefaultPoolMember(lbID, poolID string, oldMembers, n
 		return nil, nil
 	}
 
+	c.isUpdateDefaultPool = true
 	err = c.api.UpdatePoolMember(c.vLBSC, c.GetProjectID(), lbID, poolID, updateMember)
 	if err != nil {
 		logrus.Errorln("error when update pool members", err)
@@ -1016,7 +1032,7 @@ func (c *VLBProvider) ensurePoolMember(lbID, poolID string, members []*pool.Memb
 				r.ProtocolPort == mem.Port &&
 				r.MonitorPort == mem.MonitorPort &&
 				r.Backup == mem.Backup &&
-				r.Name == mem.Name &&
+				// r.Name == mem.Name &&
 				r.Weight == mem.Weight {
 				return true
 			}
@@ -1025,6 +1041,9 @@ func (c *VLBProvider) ensurePoolMember(lbID, poolID string, members []*pool.Memb
 	}
 	comparePoolMembers := func(p1 []*pool.Member, p2 []*lObjects.Member) bool {
 		// check if member exist in current pool
+		if len(p1) != len(p2) {
+			return false
+		}
 		for _, p := range p1 {
 			if !checkIfExist(p2, p) {
 				logrus.Infof("member in pool not exist: %v", p)
@@ -1034,23 +1053,7 @@ func (c *VLBProvider) ensurePoolMember(lbID, poolID string, members []*pool.Memb
 		return true
 	}
 	if !comparePoolMembers(members, memsGet) {
-		updateMember := make([]*pool.Member, 0)
-		for _, m := range memsGet {
-			updateMember = append(updateMember, &pool.Member{
-				IpAddress:   m.Address,
-				Port:        m.ProtocolPort,
-				Backup:      m.Backup,
-				Weight:      m.Weight,
-				Name:        m.Name,
-				MonitorPort: m.MonitorPort,
-			})
-		}
-		for _, m := range members {
-			if !checkIfExist(memsGet, m) {
-				updateMember = append(updateMember, m)
-			}
-		}
-		err := c.api.UpdatePoolMember(c.vLBSC, c.GetProjectID(), lbID, poolID, updateMember)
+		err := c.api.UpdatePoolMember(c.vLBSC, c.GetProjectID(), lbID, poolID, members)
 		if err != nil {
 			logrus.Errorln("error when update pool members", err)
 			return nil, err
@@ -1322,6 +1325,10 @@ func (c *VLBProvider) toVngCloudCertificate(secretName string, namespace string,
 }
 
 func (c *VLBProvider) CheckReApply() bool {
+	if c.isUpdateDefaultPool {
+		c.isUpdateDefaultPool = false
+		return true
+	}
 	return c.CheckSecretTrackerChange()
 	// return true
 }

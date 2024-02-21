@@ -121,9 +121,4 @@ const (
 	IngressSecretCertName = "tls.crt"
 	// IngressSecretKeyName is private key name defined in the secret data.
 	IngressSecretKeyName = "tls.key"
-
-	// VNGCLOUDCertificateNameTemplate is the name format string to create certificate.
-	// It is highly recommended to use your domain name as friendly name
-	// Only letters (a-z, A-Z, 0-9, '.', '-') are allowed. Your input data length must be between 5 and 50.
-	VNGCLOUDCertificateNameTemplate = "annd2-%s-" // add version to the end of the name
 )

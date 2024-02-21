@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gophercloud/gophercloud/openstack/loadbalancer/v2/loadbalancers"
 	"github.com/sirupsen/logrus"
@@ -263,45 +264,6 @@ func (c *VLBProvider) DeleteLoadbalancer(con *Controller, ing *nwv1.Ingress) err
 		logrus.Errorln("error when compare ingress", err)
 		return err
 	}
-	// // can delete lb instance here ......................
-	// listeners, err := c.api.ListListenerOfLB(c.vLBSC, c.GetProjectID(), lbID)
-	// if err != nil {
-	// 	logrus.Errorln("error when list listener of lb", err)
-	// 	return err
-	// }
-	// for _, lis := range listeners {
-	// 	policies, err := c.api.ListPolicyOfListener(c.vLBSC, c.GetProjectID(), lbID, lis.UUID)
-	// 	if err != nil {
-	// 		logrus.Errorln("error when list policy of listener", err)
-	// 		return err
-	// 	}
-	// 	if len(policies) == 0 {
-	// 		err = c.api.DeleteListener(c.vLBSC, c.GetProjectID(), lbID, lis.UUID)
-	// 		if err != nil {
-	// 			logrus.Errorln("error when delete listener", err)
-	// 			return err
-	// 		}
-	// 		c.WaitForLBActive(lbID)
-	// 	}
-	// }
-	// pools, err := c.api.ListPoolOfLB(c.vLBSC, c.GetProjectID(), lbID)
-	// if err != nil {
-	// 	logrus.Errorln("error when list pool of lb", err)
-	// 	return err
-	// }
-	// for _, p := range pools {
-	// 	if p.Name == consts.DEFAULT_NAME_DEFAULT_POOL {
-	// 		if len(p.Members) == 0 {
-	// 			err = c.api.DeletePool(c.vLBSC, c.GetProjectID(), lbID, p.UUID)
-	// 			if err != nil {
-	// 				logrus.Errorln("error when delete pool", err)
-	// 				return err
-	// 			}
-	// 			c.WaitForLBActive(lbID)
-	// 		}
-	// 		break
-	// 	}
-	// }
 	return nil
 }
 
@@ -413,7 +375,7 @@ func (c *VLBProvider) InspectIngress(con *Controller, ing *nwv1.Ingress) (*Ingre
 		}, nil
 	}
 	klog.Infof("----------------- InspectIngress(%s/%s) ------------------", ing.Namespace, ing.Name)
-	lb_prefix_name := c.GetResourceName(ing)
+	lb_prefix_name := TrimString(c.GetResourceHashName(ing), consts.DEFAULT_HASH_NAME_LENGTH)
 	mapTLS, certArr := c.mapHostTLS(ing)
 
 	expectPolicyName := make([]*PolicyExpander, 0)
@@ -430,10 +392,7 @@ func (c *VLBProvider) InspectIngress(con *Controller, ing *nwv1.Ingress) (*Ingre
 			return nil, err
 		}
 		version := secret.ObjectMeta.ResourceVersion
-
-		fullName := fmt.Sprintf("%s-%s-%s-%s", c.GetClusterName(), ing.Namespace, ing.Name, tls.SecretName)
-		hashName := HashString(fullName)
-		name := fmt.Sprintf(VNGCLOUDCertificateNameTemplate, hashName[:10])
+		name := c.GetCertificateName(ing.Namespace, tls.SecretName)
 		secretName := tls.SecretName
 		expectCertificateName = append(expectCertificateName, &CertificateExpander{
 			Name:       name,
@@ -822,32 +781,34 @@ func (c *VLBProvider) ActionCompareIngress(lbID string, oldIngExpander, newIngEx
 	return lb, nil
 }
 
+func (c *VLBProvider) GetResourceHashName(ing *nwv1.Ingress) string {
+	fullName := fmt.Sprintf("%s_%s_%s", c.GetClusterID(), ing.Namespace, ing.Name)
+	hash := HashString(fullName)
+	return hash
+}
+
 // GetResourceName get Ingress related resource name.
 func (c *VLBProvider) GetResourceName(ing *nwv1.Ingress) string {
-	fullName := fmt.Sprintf("%s_%s_%s", c.config.ClusterName, ing.Namespace, ing.Name)
-	hash := HashString(fullName)
-
-	MinInt := func(a, b int) int {
-		if a < b {
-			return a
-		}
-		return b
-	}
-	trim := func(str string, length int) string {
-		return str[:MinInt(len(str), length)]
-	}
-	return fmt.Sprintf("annd_%s", trim(hash, 10))
-	// return fmt.Sprintf("annd2_%s_%s_%s",
-	// 	trim(c.config.ClusterName, 10),
-	// 	trim(ing.Name, 10),
-	// 	trim(hash, 10),
-	// )
+	hash := c.GetResourceHashName(ing)
+	return fmt.Sprintf("vks_%s_%s_%s_%s", c.GetClusterID()[8:16], TrimString(ing.Namespace, 10), TrimString(ing.Name, 10), TrimString(hash, consts.DEFAULT_HASH_NAME_LENGTH))
 }
 func (c *VLBProvider) GetPolicyName(prefix string, mode bool, ruleIndex, pathIndex int) string {
 	return fmt.Sprintf("%s_%t_r%d_p%d", prefix, mode, ruleIndex, pathIndex)
 }
 func (c *VLBProvider) GetPoolName(prefix, serviceName string, port int) string {
-	return fmt.Sprintf("%s_%s_%d", prefix, strings.ReplaceAll(serviceName, "/", "-"), port)
+	return fmt.Sprintf("%s_%s_%d", prefix, TrimString(strings.ReplaceAll(serviceName, "/", "-"), 35), port)
+}
+
+func (c *VLBProvider) GetCertificateName(namespace, name string) string {
+	fullName := fmt.Sprintf("%s-%s-%s", c.GetClusterID(), namespace, name)
+	hashName := HashString(fullName)
+	newName := fmt.Sprintf("vks-%s-%s-%s-%s-", c.GetClusterID()[8:16], TrimString(namespace, 10), TrimString(name, 10), TrimString(hashName, consts.DEFAULT_HASH_NAME_LENGTH))
+	for _, char := range newName {
+		if !unicode.IsLetter(char) && !unicode.IsDigit(char) && char != '-' && char != '.' {
+			newName = strings.ReplaceAll(newName, string(char), "-")
+		}
+	}
+	return newName
 }
 
 func (c *VLBProvider) setUpPortalInfo() {
@@ -867,7 +828,7 @@ func (c *VLBProvider) setUpPortalInfo() {
 
 func (c *VLBProvider) ensurePool(lbID, poolName string, isDelete bool) (*lObjects.Pool, error) {
 	klog.Infof("------------ ensurePool: %s", poolName)
-	// c.WaitForLBActive(lbID) // ..................................................
+	c.WaitForLBActive(lbID) // ..................................................
 	pool, err := c.FindPoolByName(lbID, poolName)
 	if err != nil {
 		if err == errors.ErrNotFound {
@@ -1117,7 +1078,7 @@ func (c *VLBProvider) ensureListener(lbID, lisName string, listenerOpts listener
 			klog.Infof("listener need update default pool id: %s", listenerOpts.DefaultPoolId)
 		}
 
-		if listenerOpts.DefaultCertificateAuthority != nil && *(lis.DefaultCertificateAuthority) != *(listenerOpts.DefaultCertificateAuthority) {
+		if listenerOpts.DefaultCertificateAuthority != nil && (lis.DefaultCertificateAuthority == nil || *(lis.DefaultCertificateAuthority) != *(listenerOpts.DefaultCertificateAuthority)) {
 			updateOpts.DefaultCertificateAuthority = listenerOpts.DefaultCertificateAuthority
 			isUpdate = true
 			klog.Infof("listener need update default certificate authority: %s", *listenerOpts.DefaultCertificateAuthority)
@@ -1281,8 +1242,8 @@ func (c *VLBProvider) GetProjectID() string {
 	return c.extraInfo.ProjectID
 }
 
-func (c *VLBProvider) GetClusterName() string {
-	return c.config.ClusterName
+func (c *VLBProvider) GetClusterID() string {
+	return c.config.ClusterID
 }
 
 func (c *VLBProvider) toVngCloudCertificate(secretName string, namespace string, generateName string) (*certificates.ImportOpts, error) {

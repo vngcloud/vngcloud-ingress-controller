@@ -7,12 +7,13 @@ import (
 
 const (
 	DEFAULT_PORTAL_NAME_LENGTH        = 50      // All the name must be less than 50 characters
+	DEFAULT_HASH_NAME_LENGTH          = 5      // a unique hash name
 	DEFAULT_PORTAL_DESCRIPTION_LENGTH = 255     // All the description must be less than 255 characters
 	DEFAULT_LB_PREFIX_NAME            = "annd2" // "clu" is abbreviated of "cluster"
-	DEFAULT_NAME_DEFAULT_POOL         = "annd2_default_pool"
+	DEFAULT_NAME_DEFAULT_POOL         = "vks_default_pool"
 	DEFAULT_PACKAGE_ID                = "lbp-f562b658-0fd4-4fa6-9c57-c1a803ccbf86"
-	DEFAULT_HTTPS_LISTENER_NAME       = "annd2_https_listener"
-	DEFAULT_HTTP_LISTENER_NAME        = "annd2_http_listener"
+	DEFAULT_HTTPS_LISTENER_NAME       = "vks_https_listener"
+	DEFAULT_HTTP_LISTENER_NAME        = "vks_http_listener"
 )
 
 var OPT_POOL_DEFAULT = pool.CreateOpts{

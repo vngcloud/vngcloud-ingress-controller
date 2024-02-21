@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-
 )
 
 func EncodeToValidName(str string) string {
@@ -53,4 +52,14 @@ func HashString(str string) string {
 	// Convert the truncated hash to a hex-encoded string
 	hashString := hex.EncodeToString(truncatedHash)
 	return hashString
+}
+
+func MinInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+func TrimString(str string, length int) string {
+	return str[:MinInt(len(str), length)]
 }

@@ -140,7 +140,7 @@ zz_generated.openapi.go
 /openstack-cloud-controller-manager
 /k8s-keystone-auth
 /cinder-csi-plugin
-/octavia-ingress-controller
+/vngcloud-ingress-controller
 /client-keystone-auth
 /barbican-kms-plugin
 /magnum-auto-healer

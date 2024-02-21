@@ -70,10 +70,10 @@ spec:
       port: 8888
       protocol: TCP
       targetPort: 8888
-    # - name: second-port
-    #   port: 7777
-    #   protocol: TCP
-    #   targetPort: 7777
+    - name: second-port
+      port: 7777
+      protocol: TCP
+      targetPort: 7777
   selector:
     app: goapp-debug
   type: NodePort

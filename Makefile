@@ -32,31 +32,19 @@ TAR_FILE	?= rootfs.tar
 
 GOOS		?= $(shell go env GOOS)
 GOPROXY		?= $(shell go env GOPROXY)
-VERSION         ?= $(shell git describe --dirty --tags --match='v*')
+# VERSION         ?= $(shell git describe --dirty --tags --match='v*')
+VERSION         := v0.0.0
 GOARCH		:=
 GOFLAGS		:=
 TAGS		:=
 LDFLAGS		:= "-w -s -X 'k8s.io/component-base/version.gitVersion=$(VERSION)' -X 'k8s.io/cloud-provider-openstack/pkg/version.Version=$(VERSION)'"
 GOX_LDFLAGS	:= $(shell echo "$(LDFLAGS) -extldflags \"-static\"")
-REGISTRY	?= registry.k8s.io/provider-os
+REGISTRY	?= vcr.vngcloud.vn/60108-annd2-ingress
 IMAGE_OS	?= linux
-IMAGE_NAMES	?= openstack-cloud-controller-manager \
-				cinder-csi-plugin \
-				k8s-keystone-auth \
-				octavia-ingress-controller \
-				manila-csi-plugin \
-				barbican-kms-plugin \
-				magnum-auto-healer
+IMAGE_NAMES	?= vngcloud-ingress-controller
 ARCH		?= amd64
 ARCHS		?= amd64 arm arm64 ppc64le s390x
-BUILD_CMDS	?= openstack-cloud-controller-manager \
-				cinder-csi-plugin \
-				k8s-keystone-auth \
-				octavia-ingress-controller \
-				manila-csi-plugin \
-				barbican-kms-plugin \
-				magnum-auto-healer \
-				client-keystone-auth
+BUILD_CMDS	?= vngcloud-ingress-controller
 
 # CTI targets
 
@@ -189,13 +177,7 @@ ifndef HAS_GOX
 	echo "installing gox"
 	go install github.com/mitchellh/gox
 endif
-	CGO_ENABLED=0 gox -parallel=$(GOX_PARALLEL) -output="_dist/{{.OS}}-{{.Arch}}/{{.Dir}}" -osarch='$(TARGETS)' $(GOFLAGS) $(if $(TAGS),-tags '$(TAGS)',) -ldflags '$(GOX_LDFLAGS)' $(GIT_HOST)/$(BASE_DIR)/cmd/openstack-cloud-controller-manager/
-	CGO_ENABLED=0 gox -parallel=$(GOX_PARALLEL) -output="_dist/{{.OS}}-{{.Arch}}/{{.Dir}}" -osarch='$(TARGETS)' $(GOFLAGS) $(if $(TAGS),-tags '$(TAGS)',) -ldflags '$(GOX_LDFLAGS)' $(GIT_HOST)/$(BASE_DIR)/cmd/cinder-csi-plugin/
-	CGO_ENABLED=0 gox -parallel=$(GOX_PARALLEL) -output="_dist/{{.OS}}-{{.Arch}}/{{.Dir}}" -osarch='$(TARGETS)' $(GOFLAGS) $(if $(TAGS),-tags '$(TAGS)',) -ldflags '$(GOX_LDFLAGS)' $(GIT_HOST)/$(BASE_DIR)/cmd/k8s-keystone-auth/
-	CGO_ENABLED=0 gox -parallel=$(GOX_PARALLEL) -output="_dist/{{.OS}}-{{.Arch}}/{{.Dir}}" -osarch='$(TARGETS)' $(GOFLAGS) $(if $(TAGS),-tags '$(TAGS)',) -ldflags '$(GOX_LDFLAGS)' $(GIT_HOST)/$(BASE_DIR)/cmd/client-keystone-auth/
-	CGO_ENABLED=0 gox -parallel=$(GOX_PARALLEL) -output="_dist/{{.OS}}-{{.Arch}}/{{.Dir}}" -osarch='$(TARGETS)' $(GOFLAGS) $(if $(TAGS),-tags '$(TAGS)',) -ldflags '$(GOX_LDFLAGS)' $(GIT_HOST)/$(BASE_DIR)/cmd/octavia-ingress-controller/
-	CGO_ENABLED=0 gox -parallel=$(GOX_PARALLEL) -output="_dist/{{.OS}}-{{.Arch}}/{{.Dir}}" -osarch='$(TARGETS)' $(GOFLAGS) $(if $(TAGS),-tags '$(TAGS)',) -ldflags '$(GOX_LDFLAGS)' $(GIT_HOST)/$(BASE_DIR)/cmd/manila-csi-plugin/
-	CGO_ENABLED=0 gox -parallel=$(GOX_PARALLEL) -output="_dist/{{.OS}}-{{.Arch}}/{{.Dir}}" -osarch='$(TARGETS)' $(GOFLAGS) $(if $(TAGS),-tags '$(TAGS)',) -ldflags '$(GOX_LDFLAGS)' $(GIT_HOST)/$(BASE_DIR)/cmd/magnum-auto-healer/
+	CGO_ENABLED=0 gox -parallel=$(GOX_PARALLEL) -output="_dist/{{.OS}}-{{.Arch}}/{{.Dir}}" -osarch='$(TARGETS)' $(GOFLAGS) $(if $(TAGS),-tags '$(TAGS)',) -ldflags '$(GOX_LDFLAGS)' $(GIT_HOST)/$(BASE_DIR)/cmd/vngcloud-ingress-controller/
 
 .PHONY: dist
 dist: build-cross
@@ -209,3 +191,29 @@ dist: build-cross
 
 .PHONY: bindep build clean cover work docs fmt functional lint realclean \
 	relnotes test translation version build-cross dist codeclimate
+
+
+.PHONY: annd2
+annd2:
+	rm -f vngcloud-ingress-controller
+	make vngcloud-ingress-controller
+
+	make build-local-image-vngcloud-ingress-controller
+	docker push $(REGISTRY)/vngcloud-ingress-controller:$(VERSION)
+	# docker push vcr.vngcloud.vn/60108-ingress-controller/vngcloud-ingress-controller:v0.0.0
+
+.PHONY: tidy
+tidy:
+	go get github.com/vngcloud/vngcloud-go-sdk@dev
+	go mod tidy
+
+.PHONY: apply
+apply:
+	kubectl apply -f test/.example-service.yaml
+	kubectl apply -f test/.secret.yaml
+	kubectl apply -f test/.vngcloud-ingress-controller.yaml
+	kubectl delete pods -n kube-system vngcloud-ingress-controller-0
+
+.PHONY: restart
+restart:
+	kubectl delete pods -n kube-system vngcloud-ingress-controller-0

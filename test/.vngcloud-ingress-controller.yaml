@@ -2,26 +2,26 @@
 kind: ServiceAccount
 apiVersion: v1
 metadata:
-  name: octavia-ingress-controller
+  name: vngcloud-ingress-controller
   namespace: kube-system
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: octavia-ingress-controller
+  name: vngcloud-ingress-controller
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: cluster-admin
 subjects:
   - kind: ServiceAccount
-    name: octavia-ingress-controller
+    name: vngcloud-ingress-controller
     namespace: kube-system
 ---
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: octavia-ingress-controller-config
+  name: vngcloud-ingress-controller-config
   namespace: kube-system
 data:
   config: |
@@ -37,22 +37,22 @@ data:
 kind: StatefulSet
 apiVersion: apps/v1
 metadata:
-  name: octavia-ingress-controller
+  name: vngcloud-ingress-controller
   namespace: kube-system
   labels:
-    k8s-app: octavia-ingress-controller
+    k8s-app: vngcloud-ingress-controller
 spec:
   replicas: 1
   selector:
     matchLabels:
-      k8s-app: octavia-ingress-controller
-  serviceName: octavia-ingress-controller
+      k8s-app: vngcloud-ingress-controller
+  serviceName: vngcloud-ingress-controller
   template:
     metadata:
       labels:
-        k8s-app: octavia-ingress-controller
+        k8s-app: vngcloud-ingress-controller
     spec:
-      serviceAccountName: octavia-ingress-controller
+      serviceAccountName: vngcloud-ingress-controller
       tolerations:
         - effect: NoSchedule # Make sure the pod can be scheduled on master kubelet.
           operator: Exists
@@ -61,13 +61,13 @@ spec:
         - effect: NoExecute
           operator: Exists
       containers:
-        - name: octavia-ingress-controller
-          image: vcr.vngcloud.vn/60108-annd2-ingress/octavia-ingress-controller:v0.0.0
+        - name: vngcloud-ingress-controller
+          image: vcr.vngcloud.vn/60108-annd2-ingress/vngcloud-ingress-controller:v0.0.0
           imagePullPolicy: Always
           args:
-            - /bin/octavia-ingress-controller
+            - /bin/vngcloud-ingress-controller
             - -v=5
-            - --config=/etc/config/octavia-ingress-controller-config.yaml
+            - --config=/etc/config/vngcloud-ingress-controller-config.yaml
           volumeMounts:
             - mountPath: /etc/kubernetes
               name: kubernetes-config
@@ -82,8 +82,8 @@ spec:
             type: Directory
         - name: ingress-config
           configMap:
-            name: octavia-ingress-controller-config
+            name: vngcloud-ingress-controller-config
             items:
               - key: config
-                path: octavia-ingress-controller-config.yaml
+                path: vngcloud-ingress-controller-config.yaml
 ---

@@ -261,7 +261,7 @@ func (c *Controller) nodeSyncLoop() {
 		logrus.WithFields(logrus.Fields{"ingress": ing.Name, "namespace": ing.Namespace}).Debug("Starting to handle ingress")
 		err := c.ensureIngress(nil, &ing)
 		if err != nil {
-			logrus.WithFields(logrus.Fields{"ingress": ing.Name, "namespace": ing.Namespace}).Error("Failed to handle ingress")
+			logrus.WithFields(logrus.Fields{"ingress": ing.Name, "namespace": ing.Namespace}).Error("Failed to handle ingress:", err)
 			continue
 		}
 	}

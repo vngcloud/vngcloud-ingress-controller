@@ -85,37 +85,37 @@ const (
 	DeprecatedLabelNodeRoleMaster = "node-role.kubernetes.io/master"
 
 	// IngressAnnotationInternal is the annotation used on the Ingress
-	// to indicate that we want an internal loadbalancer service so that octavia-ingress-controller won't associate
+	// to indicate that we want an internal loadbalancer service so that vngcloud-ingress-controller won't associate
 	// floating ip to the load balancer VIP.
 	// Default to true.
-	IngressAnnotationInternal = "octavia.ingress.kubernetes.io/internal"
+	IngressAnnotationInternal = "vngcloud.ingress.kubernetes.io/internal"
 
 	// IngressAnnotationSourceRangesKey is the key of the annotation on an ingress to set allowed IP ranges on their LoadBalancers.
 	// It should be a comma-separated list of CIDRs.
-	IngressAnnotationSourceRangesKey = "octavia.ingress.kubernetes.io/whitelist-source-range"
+	IngressAnnotationSourceRangesKey = "vngcloud.ingress.kubernetes.io/whitelist-source-range"
 
 	// IngressControllerTag is added to the related resources.
-	IngressControllerTag = "octavia.ingress.kubernetes.io"
+	IngressControllerTag = "vngcloud.ingress.kubernetes.io"
 
 	// IngressAnnotationTimeoutClientData is the timeout for frontend client inactivity.
-	// If not set, this value defaults to the Octavia configuration key `timeout_client_data`.
-	// Refer to https://docs.openstack.org/octavia/latest/configuration/configref.html#haproxy_amphora.timeout_client_data
-	IngressAnnotationTimeoutClientData = "octavia.ingress.kubernetes.io/timeout-client-data"
+	// If not set, this value defaults to the vngcloud configuration key `timeout_client_data`.
+	// Refer to https://docs.openstack.org/vngcloud/latest/configuration/configref.html#haproxy_amphora.timeout_client_data
+	IngressAnnotationTimeoutClientData = "vngcloud.ingress.kubernetes.io/timeout-client-data"
 
 	// IngressAnnotationTimeoutMemberData is the timeout for backend member inactivity.
-	// If not set, this value defaults to the Octavia configuration key `timeout_member_data`.
-	// Refer to https://docs.openstack.org/octavia/latest/configuration/configref.html#haproxy_amphora.timeout_member_data
-	IngressAnnotationTimeoutMemberData = "octavia.ingress.kubernetes.io/timeout-member-data"
+	// If not set, this value defaults to the vngcloud configuration key `timeout_member_data`.
+	// Refer to https://docs.openstack.org/vngcloud/latest/configuration/configref.html#haproxy_amphora.timeout_member_data
+	IngressAnnotationTimeoutMemberData = "vngcloud.ingress.kubernetes.io/timeout-member-data"
 
 	// IngressAnnotationTimeoutMemberConnect is the timeout for backend member connection.
-	// If not set, this value defaults to the Octavia configuration key `timeout_member_connect`.
-	// Refer to https://docs.openstack.org/octavia/latest/configuration/configref.html#haproxy_amphora.timeout_member_connect
-	IngressAnnotationTimeoutMemberConnect = "octavia.ingress.kubernetes.io/timeout-member-connect"
+	// If not set, this value defaults to the vngcloud configuration key `timeout_member_connect`.
+	// Refer to https://docs.openstack.org/vngcloud/latest/configuration/configref.html#haproxy_amphora.timeout_member_connect
+	IngressAnnotationTimeoutMemberConnect = "vngcloud.ingress.kubernetes.io/timeout-member-connect"
 
 	// IngressAnnotationTimeoutTCPInspect is the time to wait for TCP packets for content inspection.
-	// If not set, this value defaults to the Octavia configuration key `timeout_tcp_inspect`.
-	// Refer to https://docs.openstack.org/octavia/latest/configuration/configref.html#haproxy_amphora.timeout_tcp_inspect
-	IngressAnnotationTimeoutTCPInspect = "octavia.ingress.kubernetes.io/timeout-tcp-inspect"
+	// If not set, this value defaults to the vngcloud configuration key `timeout_tcp_inspect`.
+	// Refer to https://docs.openstack.org/vngcloud/latest/configuration/configref.html#haproxy_amphora.timeout_tcp_inspect
+	IngressAnnotationTimeoutTCPInspect = "vngcloud.ingress.kubernetes.io/timeout-tcp-inspect"
 
 	// IngressSecretCertName is certificate key name defined in the secret data.
 	IngressSecretCertName = "tls.crt"

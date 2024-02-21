@@ -58,6 +58,9 @@ COPY Makefile go.mod go.sum ./
 COPY cmd/ cmd/
 COPY pkg/ pkg/
 RUN make build GOOS=${TARGETOS} GOARCH=${TARGETARCH} GOPROXY=${GOPROXY} VERSION=${VERSION}
+# COPY vngcloud-ingress-controller/ ./vngcloud-ingress-controller
+# RUN chmod +x ./vngcloud-ingress-controller
+
 
 
 ################################################################################
@@ -208,17 +211,17 @@ ENTRYPOINT ["/bin/manila-csi-plugin"]
 ##
 ## octavia-ingress-controller
 ##
-FROM --platform=${TARGETPLATFORM} ${DISTROLESS_IMAGE} as octavia-ingress-controller
+FROM --platform=${TARGETPLATFORM} ${DISTROLESS_IMAGE} as vngcloud-ingress-controller
 
-COPY --from=builder /build/octavia-ingress-controller /bin/octavia-ingress-controller
+COPY --from=builder /build/vngcloud-ingress-controller /bin/vngcloud-ingress-controller
 COPY --from=certs /etc/ssl/certs /etc/ssl/certs
 
-LABEL name="octavia-ingress-controller" \
+LABEL name="vngcloud-ingress-controller" \
       license="Apache Version 2.0" \
       maintainers="Kubernetes Authors" \
-      description="Octavia ingress controller" \
+      description="vngcloud ingress controller" \
       distribution-scope="public" \
-      summary="Octavia ingress controller" \
+      summary="vngcloud ingress controller" \
       help="none"
 
-CMD ["/bin/octavia-ingress-controller"]
+CMD ["/bin/vngcloud-ingress-controller"]

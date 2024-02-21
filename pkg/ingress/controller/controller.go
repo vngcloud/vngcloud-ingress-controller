@@ -231,18 +231,18 @@ func (c *Controller) nodeSyncLoop() {
 		logrus.Errorf("Failed to retrieve current set of nodes from node lister: %v", err)
 		return
 	}
-	if utils.NodeSlicesEqual(readyWorkerNodes, c.knownNodes) {
+	if utils.NodeSlicesEqual(readyWorkerNodes, c.knownNodes) && !c.lbProvider.CheckReApply() {
 		return
 	}
 
-	logrus.Infof("Detected change in list of current cluster nodes. New node set: %v", utils.NodeNames(readyWorkerNodes))
+	logrus.Infof("Detected change in list of current cluster nodes or secret. Reapply all ingress now. Node set: %v", utils.NodeNames(readyWorkerNodes))
 
-	// if no new nodes, then avoid update member
-	if len(readyWorkerNodes) == 0 {
-		c.knownNodes = readyWorkerNodes
-		logrus.Info("Finished to handle node change, it's [] now")
-		return
-	}
+	// // if no new nodes, then avoid update member
+	// if len(readyWorkerNodes) == 0 {
+	// 	c.knownNodes = readyWorkerNodes
+	// 	logrus.Info("Finished to handle node change, it's [] now")
+	// 	return
+	// }
 
 	var ings *nwv1.IngressList
 	// NOTE(lingxiankong): only take ingresses without ip address into consideration

@@ -78,6 +78,62 @@ type VLBProvider struct {
 	metadataOpts metadata.Opts
 	api          API
 	kubeClient   kubernetes.Interface
+
+	SecretTrackers []*SecretTracker
+}
+type SecretTracker struct {
+	namespace string
+	name      string
+	uuid      string
+	version   string
+}
+
+func (c *VLBProvider) AddSecretTracker(namespace, name, uuid, version string) {
+	for _, st := range c.SecretTrackers {
+		if st.namespace == namespace && st.name == name {
+			st.version = version
+			st.uuid = uuid
+			return
+		}
+	}
+	c.SecretTrackers = append(c.SecretTrackers, &SecretTracker{
+		namespace: namespace,
+		name:      name,
+		uuid:      uuid,
+		version:   version,
+	})
+}
+
+func (c *VLBProvider) RemoveSecretTracker(namespace, name string) {
+	for i, st := range c.SecretTrackers {
+		if st.namespace == namespace && st.name == name {
+			c.SecretTrackers = append(c.SecretTrackers[:i], c.SecretTrackers[i+1:]...)
+			return
+		}
+	}
+}
+
+func (c *VLBProvider) ClearSecretTracker() {
+	c.SecretTrackers = make([]*SecretTracker, 0)
+}
+
+func (c *VLBProvider) CheckSecretTrackerChange() bool {
+	for _, st := range c.SecretTrackers {
+		logrus.Infoln("CheckSecretTrackerChange: ", st.namespace, st.name, st.uuid, st.version)
+		// check if certificate already exist
+		secret, err := c.kubeClient.CoreV1().Secrets(st.namespace).Get(context.TODO(), st.name, apimetav1.GetOptions{})
+		if err != nil {
+			logrus.Errorf("error when get secret in CheckSecretTrackerChange()")
+			return true
+		}
+		version := secret.ObjectMeta.ResourceVersion
+		logrus.Infoln("CheckSecretTrackerChange: ", st.namespace, st.name, st.uuid, version)
+
+		if version != st.version {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *VLBProvider) Init() error {
@@ -374,7 +430,7 @@ func (c *VLBProvider) InspectIngress(con *Controller, ing *nwv1.Ingress) (*Ingre
 
 		fullName := fmt.Sprintf("%s-%s-%s-%s", c.GetClusterName(), ing.Namespace, ing.Name, tls.SecretName)
 		hashName := HashString(fullName)
-		name := fmt.Sprintf(VNGCLOUDCertificateNameTemplate, hashName[:10], version)
+		name := fmt.Sprintf(VNGCLOUDCertificateNameTemplate, hashName[:10])
 		secretName := tls.SecretName
 		expectCertificateName = append(expectCertificateName, &CertificateExpander{
 			Name:       name,
@@ -572,13 +628,19 @@ func (c *VLBProvider) ActionCompareIngress(lbID string, oldIngExpander, newIngEx
 	logrus.Infoln("########################## newIngExpander:")
 	newIngExpander.Print()
 
+	for _, cert := range oldIngExpander.CertificateExpander {
+		c.RemoveSecretTracker(oldIngExpander.namespace, cert.SecretName)
+	}
+	for _, cert := range newIngExpander.CertificateExpander {
+		c.AddSecretTracker(newIngExpander.namespace, cert.SecretName, cert.UUID, cert.Version)
+	}
 	// ensure certificate
 	EnsureCertificate := func(ing *IngressInspect) error {
 		lCert, _ := c.api.ListCertificate(c.vLBSC, c.GetProjectID())
 		for _, cert := range ing.CertificateExpander {
 			// check if certificate already exist
 			for _, lc := range lCert {
-				if lc.Name == cert.Name {
+				if lc.Name == cert.Name+cert.Version {
 					cert.UUID = lc.UUID
 					break
 				}
@@ -586,7 +648,7 @@ func (c *VLBProvider) ActionCompareIngress(lbID string, oldIngExpander, newIngEx
 			if cert.UUID != "" {
 				continue
 			}
-			importOpts, err := c.toVngCloudCertificate(cert.SecretName, ing.namespace, cert.Name)
+			importOpts, err := c.toVngCloudCertificate(cert.SecretName, ing.namespace, cert.Name+cert.Version)
 			if err != nil {
 				logrus.Errorln("error when toVngCloudCertificate", err)
 				return err
@@ -736,6 +798,24 @@ func (c *VLBProvider) ActionCompareIngress(lbID string, oldIngExpander, newIngEx
 			logrus.Infof("pool in use: %v, not delete", oldIngPool.Name)
 		}
 	}
+
+	// ensure certificate
+	DeleteRedundantCertificate := func(ing *IngressInspect) error {
+		lCert, _ := c.api.ListCertificate(c.vLBSC, c.GetProjectID())
+		for _, lc := range lCert {
+			for _, cert := range ing.CertificateExpander {
+				if strings.HasPrefix(lc.Name, cert.Name) && !lc.InUse {
+					err := c.api.DeleteCertificate(c.vLBSC, c.GetProjectID(), lc.UUID)
+					if err != nil {
+						logrus.Errorln("error when delete certificate:", lc.UUID, err)
+					}
+				}
+			}
+		}
+		return nil
+	}
+	DeleteRedundantCertificate(oldIngExpander)
+	DeleteRedundantCertificate(newIngExpander)
 	return lb, nil
 }
 
@@ -1239,4 +1319,9 @@ func (c *VLBProvider) toVngCloudCertificate(secretName string, namespace string,
 		CertificateChain: consts.PointerOf[string](""),
 		Passphrase:       consts.PointerOf[string](""),
 	}, nil
+}
+
+func (c *VLBProvider) CheckReApply() bool {
+	return c.CheckSecretTrackerChange()
+	// return true
 }

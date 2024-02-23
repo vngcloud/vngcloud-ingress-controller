@@ -2,9 +2,10 @@ package test
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // create 2 ingress with default backend then delete the first one
@@ -17,13 +18,13 @@ metadata:
   name: dangbh2
   annotations:
     kubernetes.io/ingress.class: "vngcloud"
-    vngcloud.vngcloud.vn/load-balancer-id: "%s"
+    vks.vngcloud.vn/load-balancer-id: "%s"
 spec:
   defaultBackend:
     service:
       name: goapp-debug
       port:
-        number: 8888
+        number: 1111
 `
 
 	const tantm3 = `
@@ -33,13 +34,13 @@ metadata:
   name: tantm3
   annotations:
     kubernetes.io/ingress.class: "vngcloud"
-    vngcloud.vngcloud.vn/load-balancer-id: "%s"
+    vks.vngcloud.vn/load-balancer-id: "%s"
 spec:
   defaultBackend:
     service:
-      name: webserver
+      name: goapp-debug
       port:
-        number: 8080
+        number: 2222
 `
 	// const (
 	// 	LB_ID = "lb-67cd0bbc-4c27-4e5d-b728-9f416a509577"
@@ -71,29 +72,29 @@ spec:
 		// "Host": []string{"https-example.foo.com"},
 	}
 	resp := MakeRequest(fmt.Sprintf("http://%s/345678", IP), "", headers)
-	assert.Equal(t, "{\"received_path\":\"Received request on port 8888, path: /345678\"}", resp)
+	assert.Equal(t, "{\"received_path\":\"Port: 1111, path: /345678\"}", resp)
 
 	resp = MakeRequest(fmt.Sprintf("http://%s/sdfgh6", IP), "", headers)
-	assert.Equal(t, "{\"received_path\":\"Received request on port 8888, path: /sdfgh6\"}", resp)
+	assert.Equal(t, "{\"received_path\":\"Port: 1111, path: /sdfgh6\"}", resp)
 
 	ApplyYAML(yaml2)
 	WaitLBActive(client, LB_ID)
 
 	resp = MakeRequest(fmt.Sprintf("http://%s/345678", IP), "", headers)
-	assert.Equal(t, "webserver-6c7fb64575-lsxxn\n", resp)
+	assert.Equal(t, "{\"received_path\":\"Port: 2222, path: /345678\"}", resp)
 
 	resp = MakeRequest(fmt.Sprintf("http://%s/sdfgh6", IP), "", headers)
-	assert.Equal(t, "webserver-6c7fb64575-lsxxn\n", resp)
+	assert.Equal(t, "{\"received_path\":\"Port: 2222, path: /sdfgh6\"}", resp)
 
 	DeleteYAML(yaml2)
 	WaitLBActive(client, LB_ID)
 
 	resp = MakeRequest(fmt.Sprintf("http://%s/345678", IP), "", headers)
-	assert.Equal(t, "{\"received_path\":\"Received request on port 8888, path: /345678\"}", resp)
+	assert.Equal(t, "{\"received_path\":\"Port: 1111, path: /345678\"}", resp)
 
 	resp = MakeRequest(fmt.Sprintf("http://%s/sdfgh6", IP), "", headers)
-	assert.Equal(t, "{\"received_path\":\"Received request on port 8888, path: /sdfgh6\"}", resp)
+	assert.Equal(t, "{\"received_path\":\"Port: 1111, path: /sdfgh6\"}", resp)
 
-	DeleteYAML(yaml1)
-	WaitLBActive(client, LB_ID)
+	// DeleteYAML(yaml1)
+	// WaitLBActive(client, LB_ID)
 }

@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	ServiceAnnotationLoadBalancerID = "vngcloud.vngcloud.vn/load-balancer-id"
-	ServiceAnnotationPackageID      = "vngcloud.vngcloud.vn/package-id"
+	ServiceAnnotationLoadBalancerID = "vks.vngcloud.vn/load-balancer-id"
+	ServiceAnnotationPackageID      = "vks.vngcloud.vn/package-id"
 
 	// ServiceAnnotationLoadBalancerInternal = "service.beta.kubernetes.io/vngcloud-internal-load-balancer"
 	// ServiceAnnotationLoadBalancerType     = "vngcloud.vngcloud.vn/load-balancer-type"

@@ -2,9 +2,10 @@ package test
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestHttp(t *testing.T) {
@@ -16,18 +17,18 @@ metadata:
   name: dangbh2
   annotations:
     kubernetes.io/ingress.class: "vngcloud"
-    vngcloud.vngcloud.vn/load-balancer-id: "%s"
+    vks.vngcloud.vn/load-balancer-id: "%s"
 spec:
   rules:
     - http:
         paths:
-          - path: /web
+          - path: /1
             pathType: Exact
             backend:
               service:
-                name: webserver
+                name: goapp-debug
                 port:
-                  number: 8080
+                  number: 1111
 `
 	const (
 		LB_ID = "lb-17ee809f-fe17-4881-aea5-3cba65eac326"
@@ -49,12 +50,12 @@ spec:
 
 	headers := http.Header{}
 
-	resp := MakeRequest(fmt.Sprintf("http://%s/webb", IP), "", headers)
+	resp := MakeRequest(fmt.Sprintf("http://%s/2", IP), "", headers)
 	assert.Equal(t, SERVICE_UNAVAILABLE, resp)
 
-	resp = MakeRequest(fmt.Sprintf("http://%s/web", IP), "", headers)
-	assert.Equal(t, "webserver-6c7fb64575-lsxxn\n", resp)
+	resp = MakeRequest(fmt.Sprintf("http://%s/1", IP), "", headers)
+	assert.Equal(t, "{\"received_path\":\"Port: 1111, path: /1\"}", resp)
 
-	DeleteYAML(yaml)
-	WaitLBActive(client, LB_ID)
+	// DeleteYAML(yaml)
+	// WaitLBActive(client, LB_ID)
 }

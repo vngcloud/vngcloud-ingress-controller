@@ -2,9 +2,10 @@ package test
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDefaultBackend(t *testing.T) {
@@ -16,13 +17,13 @@ metadata:
   name: dangbh2
   annotations:
     kubernetes.io/ingress.class: "vngcloud"
-    vngcloud.vngcloud.vn/load-balancer-id: "%s"
+    vks.vngcloud.vn/load-balancer-id: "%s"
 spec:
   defaultBackend:
     service:
       name: goapp-debug
       port:
-        number: 8888
+        number: 1111
 `
 	const (
 		LB_ID = "lb-17ee809f-fe17-4881-aea5-3cba65eac326"
@@ -47,11 +48,11 @@ spec:
 	}
 
 	resp := MakeRequest(fmt.Sprintf("http://%s/345678", IP), "", headers)
-	assert.Equal(t, "{\"received_path\":\"Received request on port 8888, path: /345678\"}", resp)
+	assert.Equal(t, "{\"received_path\":\"Port: 1111, path: /345678\"}", resp)
 
-	resp = MakeRequest(fmt.Sprintf("http://%s/sdfgh6", IP), "", headers)
-	assert.Equal(t, "{\"received_path\":\"Received request on port 8888, path: /sdfgh6\"}", resp)
+	resp = MakeRequest(fmt.Sprintf("http://%s/sfsrr", IP), "", headers)
+	assert.Equal(t, "{\"received_path\":\"Port: 1111, path: /sfsrr\"}", resp)
 
-	DeleteYAML(yaml)
-	WaitLBActive(client, LB_ID)
+	// DeleteYAML(yaml)
+	// WaitLBActive(client, LB_ID)
 }

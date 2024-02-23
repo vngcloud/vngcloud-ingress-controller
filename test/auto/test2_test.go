@@ -2,9 +2,10 @@ package test
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestHttps(t *testing.T) {
@@ -15,23 +16,36 @@ metadata:
   name: dangbh2
   annotations:
     kubernetes.io/ingress.class: "vngcloud"
-    vngcloud.vngcloud.vn/load-balancer-id: "%s"
+    vks.vngcloud.vn/load-balancer-id: "%s"
 spec:
   tls:
     - hosts:
-        - https-example.foo.com
+        - https-example.foo.com 
       secretName: secret-annd2
+    - hosts:
+        - hhh.example.com
+      secretName: secret-wildcard-annd2
   rules:
     - host: https-example.foo.com
       http:
         paths:
-          - path: /webserver
+          - path: /1
             pathType: Exact
             backend:
               service:
-                name: webserver
+                name: goapp-debug
                 port:
-                  number: 8080
+                  number: 1111
+    - host: hhh.example.com
+      http:
+        paths:
+          - path: /3
+            pathType: Exact
+            backend:
+              service:
+                name: goapp-debug
+                port:
+                  number: 3333
 `
 	const (
 		LB_ID = "lb-17ee809f-fe17-4881-aea5-3cba65eac326"
@@ -55,15 +69,27 @@ spec:
 		// "Host": []string{"https-example.foo.com"},
 	}
 
-	resp := MakeRequest(fmt.Sprintf("https://%s/webb", IP), "https-example.foo.com", headers)
+	resp := MakeRequest(fmt.Sprintf("https://%s/1", IP), "https-example.foo.com", headers)
+	assert.Equal(t, "{\"received_path\":\"Port: 1111, path: /1\"}", resp)
+
+	resp = MakeRequest(fmt.Sprintf("https://%s/2", IP), "https-example.foo.com", headers)
 	assert.Equal(t, SERVICE_UNAVAILABLE, resp)
 
-	resp = MakeRequest(fmt.Sprintf("https://%s/webserver", IP), "https-example.foo.com", headers)
-	assert.Equal(t, "webserver-6c7fb64575-lsxxn\n", resp)
-
-	resp = MakeRequest(fmt.Sprintf("https://%s/webserver", IP), "example.foo.com", headers)
+	resp = MakeRequest(fmt.Sprintf("https://%s/1", IP), "example.foo.com", headers)
 	assert.Equal(t, SERVICE_UNAVAILABLE, resp)
 
-	DeleteYAML(yaml)
-	WaitLBActive(client, LB_ID)
+	resp = MakeRequest(fmt.Sprintf("https://%s/3", IP), "example.com", headers)
+	assert.Equal(t, SERVICE_UNAVAILABLE, resp)
+
+	resp = MakeRequest(fmt.Sprintf("https://%s/3", IP), "hhh.example.com", headers)
+	assert.Equal(t, "{\"received_path\":\"Port: 3333, path: /3\"}", resp)
+
+	resp = MakeRequest(fmt.Sprintf("https://%s/1", IP), "hhh.example.com", headers)
+	assert.Equal(t, SERVICE_UNAVAILABLE, resp)
+
+	resp = MakeRequest(fmt.Sprintf("https://%s/1", IP), "example.com", headers)
+	assert.Equal(t, SERVICE_UNAVAILABLE, resp)
+
+	// DeleteYAML(yaml)
+	// WaitLBActive(client, LB_ID)
 }

@@ -84,7 +84,7 @@ func MapIDExpander(old, cur *IngressInspect) {
 			oldPol.UUID = cur.PolicyExpander[curIndex].UUID
 			oldPol.listenerID = cur.PolicyExpander[curIndex].listenerID
 		} else {
-			logrus.Error("policy not found when map ingress: %v", oldPol)
+			logrus.Errorf("policy not found when map ingress: %v", oldPol)
 		}
 	}
 
@@ -97,7 +97,7 @@ func MapIDExpander(old, cur *IngressInspect) {
 		if curIndex, ok := mapPoolIndex[oldPol.Name]; ok {
 			oldPol.UUID = cur.PoolExpander[curIndex].UUID
 		} else {
-			logrus.Error("pool not found when map ingress: %v", oldPol)
+			logrus.Errorf("pool not found when map ingress: %v", oldPol)
 		}
 	}
 
@@ -110,7 +110,7 @@ func MapIDExpander(old, cur *IngressInspect) {
 		if curIndex, ok := mapListenerIndex[oldPol.CreateOpts.ListenerName]; ok {
 			oldPol.UUID = cur.ListenerExpander[curIndex].UUID
 		} else {
-			logrus.Error("listener not found when map ingress: %v", oldPol)
+			logrus.Errorf("listener not found when map ingress: %v", oldPol)
 		}
 	}
 }

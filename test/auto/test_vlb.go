@@ -55,60 +55,62 @@ func NewVNGCLOUDClient() (*client.ServiceClient, *client.ServiceClient) {
 		logrus.Errorf("failed to init VSERVER VNGCLOUD client")
 		return nil, nil
 	}
-
+	API.ProjectID = PROJECT_ID
+	API.VLBSC = vlbSC
+	API.VServerSC = vserverSC
 	return vlbSC, vserverSC
 }
 
 func ClearLB(client *client.ServiceClient, lbID string) {
 	logrus.Infoln("####################### CLEAR LB #######################")
 	// clear all the listeners, pools
-	WaitLBActive(client, lbID)
-	lis, err := API.ListListenerOfLB(client, PROJECT_ID, lbID)
+	WaitLBActive(lbID)
+	lis, err := API.ListListenerOfLB(lbID)
 	if err != nil {
 		logrus.Errorf("Error getting listeners of LB: %v\n", err)
 		return
 	}
 	for _, li := range lis {
-		pols, err := API.ListPolicyOfListener(client, PROJECT_ID, lbID, li.UUID)
+		pols, err := API.ListPolicyOfListener(lbID, li.UUID)
 		if err != nil {
 			logrus.Errorf("Error getting policies of listener: %v\n", err)
 			return
 		}
 		for _, pol := range pols {
-			err = API.DeletePolicy(client, PROJECT_ID, lbID, li.UUID, pol.UUID)
+			err = API.DeletePolicy(lbID, li.UUID, pol.UUID)
 			if err != nil {
 				logrus.Errorf("Error deleting policy: %v\n", err)
 				return
 			}
-			WaitLBActive(client, lbID)
+			WaitLBActive(lbID)
 		}
-		err = API.DeleteListener(client, PROJECT_ID, lbID, li.UUID)
+		err = API.DeleteListener(lbID, li.UUID)
 		if err != nil {
 			logrus.Errorf("Error deleting listener: %v\n", err)
 			return
 		}
-		WaitLBActive(client, lbID)
+		WaitLBActive(lbID)
 	}
 
-	pools, err := API.ListPoolOfLB(client, PROJECT_ID, lbID)
+	pools, err := API.ListPoolOfLB(lbID)
 	if err != nil {
 		logrus.Errorf("Error getting pools of LB: %v\n", err)
 		return
 	}
 	for _, pool := range pools {
-		err = API.DeletePool(client, PROJECT_ID, lbID, pool.UUID)
+		err = API.DeletePool(lbID, pool.UUID)
 		if err != nil {
 			logrus.Errorf("Error deleting pool: %v\n", err)
 			return
 		}
-		WaitLBActive(client, lbID)
+		WaitLBActive(lbID)
 	}
 }
 
-func WaitLBActive(client *client.ServiceClient, lbID string) *lObjects.LoadBalancer {
+func WaitLBActive(lbID string) *lObjects.LoadBalancer {
 	count := 0
 	for {
-		lb, err := API.GetLB(client, PROJECT_ID, lbID)
+		lb, err := API.GetLB(lbID)
 		if err != nil {
 			logrus.Errorln("error when get lb status: ", err)
 		} else if lb.Status == "ACTIVE" {

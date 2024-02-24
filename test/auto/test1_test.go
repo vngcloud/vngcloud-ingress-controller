@@ -36,17 +36,17 @@ spec:
 	)
 
 	client, _ := NewVNGCLOUDClient()
-	WaitLBActive(client, LB_ID)
+	WaitLBActive(LB_ID)
 
 	yaml := fmt.Sprintf(dangbh2, LB_ID)
 	DeleteYAML(yaml)
-	WaitLBActive(client, LB_ID)
+	WaitLBActive(LB_ID)
 
 	ClearLB(client, LB_ID)
-	WaitLBActive(client, LB_ID)
+	WaitLBActive(LB_ID)
 
 	ApplyYAML(yaml)
-	WaitLBActive(client, LB_ID)
+	WaitLBActive(LB_ID)
 
 	headers := http.Header{}
 
@@ -57,5 +57,5 @@ spec:
 	assert.Equal(t, "{\"received_path\":\"Port: 1111, path: /1\"}", resp)
 
 	// DeleteYAML(yaml)
-	// WaitLBActive(client, LB_ID)
+	// WaitLBActive( LB_ID)
 }

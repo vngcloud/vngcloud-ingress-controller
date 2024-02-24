@@ -217,3 +217,8 @@ apply:
 .PHONY: restart
 restart:
 	kubectl delete pods -n kube-system vngcloud-ingress-controller-0
+
+checkleak:
+	docker run \
+	-v /home/annd2/Documents/vcontainer/cloud-provider-openstack:/path \
+	zricethezav/gitleaks:latest detect --source="/path" --report-path /path/gitleaks-report.json --no-git -v

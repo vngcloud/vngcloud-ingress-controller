@@ -52,21 +52,21 @@ spec:
 	)
 
 	client, _ := NewVNGCLOUDClient()
-	WaitLBActive(client, LB_ID)
+	WaitLBActive(LB_ID)
 
 	yaml1 := fmt.Sprintf(dangbh2, LB_ID)
 	DeleteYAML(yaml1)
-	WaitLBActive(client, LB_ID)
+	WaitLBActive(LB_ID)
 
 	yaml2 := fmt.Sprintf(tantm3, LB_ID)
 	DeleteYAML(yaml2)
-	WaitLBActive(client, LB_ID)
+	WaitLBActive(LB_ID)
 
 	ClearLB(client, LB_ID)
-	WaitLBActive(client, LB_ID)
+	WaitLBActive(LB_ID)
 
 	ApplyYAML(yaml1)
-	WaitLBActive(client, LB_ID)
+	WaitLBActive(LB_ID)
 
 	headers := http.Header{
 		// "Host": []string{"https-example.foo.com"},
@@ -78,7 +78,7 @@ spec:
 	assert.Equal(t, "{\"received_path\":\"Port: 1111, path: /sdfgh6\"}", resp)
 
 	ApplyYAML(yaml2)
-	WaitLBActive(client, LB_ID)
+	WaitLBActive(LB_ID)
 
 	resp = MakeRequest(fmt.Sprintf("http://%s/345678", IP), "", headers)
 	assert.Equal(t, "{\"received_path\":\"Port: 2222, path: /345678\"}", resp)
@@ -87,7 +87,7 @@ spec:
 	assert.Equal(t, "{\"received_path\":\"Port: 2222, path: /sdfgh6\"}", resp)
 
 	DeleteYAML(yaml2)
-	WaitLBActive(client, LB_ID)
+	WaitLBActive(LB_ID)
 
 	resp = MakeRequest(fmt.Sprintf("http://%s/345678", IP), "", headers)
 	assert.Equal(t, "{\"received_path\":\"Port: 1111, path: /345678\"}", resp)
@@ -96,5 +96,5 @@ spec:
 	assert.Equal(t, "{\"received_path\":\"Port: 1111, path: /sdfgh6\"}", resp)
 
 	// DeleteYAML(yaml1)
-	// WaitLBActive(client, LB_ID)
+	// WaitLBActive(LB_ID)
 }

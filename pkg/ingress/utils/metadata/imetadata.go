@@ -1,7 +1,8 @@
 package metadata
 
-import "k8s.io/cloud-provider-openstack/pkg/ingress/utils"
-
+import (
+	"time"
+)
 
 type IMetadata interface {
 	GetInstanceID() (string, error)
@@ -9,10 +10,14 @@ type IMetadata interface {
 	GetProjectID() (string, error)
 }
 
+type MyDuration struct {
+	time.Duration
+}
+
 type (
 	Opts struct {
-		SearchOrder    string           `gcfg:"search-order"`    // will be configDriver
-		RequestTimeout utils.MyDuration `gcfg:"request-timeout"` // will be 0
+		SearchOrder    string     `gcfg:"search-order"`    // will be configDriver
+		RequestTimeout MyDuration `gcfg:"request-timeout"` // will be 0
 	}
 
 	Metadata struct {

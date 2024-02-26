@@ -2,8 +2,6 @@ package controller
 
 import (
 	"k8s.io/cloud-provider-openstack/pkg/ingress/client"
-	"time"
-
 	"k8s.io/cloud-provider-openstack/pkg/ingress/utils/metadata"
 )
 
@@ -24,30 +22,10 @@ type VLBOpts struct {
 	EnableVMonitor bool   `gcfg:"enable-vmonitor"` // default to false
 }
 
-const (
-	waitLoadbalancerInitDelay   = 5 * time.Second
-	waitLoadbalancerFactor      = 1.2
-	waitLoadbalancerActiveSteps = 30
-	waitLoadbalancerDeleteSteps = 12
-)
 
 const (
 	DEFAULT_PORTAL_NAME_LENGTH = 50
 	ACTIVE_LOADBALANCER_STATUS = "ACTIVE"
-)
-
-const (
-	healthMonitorHealthyThreshold   = 3
-	healthMonitorUnhealthyThreshold = 3
-	healthMonitorInterval           = 30
-	healthMonitorTimeout            = 5
-)
-
-const (
-	listenerDefaultCIDR       = "0.0.0.0/0"
-	listenerTimeoutClient     = 50
-	listenerTimeoutConnection = 5
-	listenerTimeoutMember     = 50
 )
 
 const (
@@ -84,41 +62,18 @@ const (
 	// Deprecated in favor of LabelNodeExcludeLB
 	DeprecatedLabelNodeRoleMaster = "node-role.kubernetes.io/master"
 
-	// IngressAnnotationInternal is the annotation used on the Ingress
-	// to indicate that we want an internal loadbalancer service so that vngcloud-ingress-controller won't associate
-	// floating ip to the load balancer VIP.
-	// Default to true.
-	IngressAnnotationInternal = "vngcloud.ingress.kubernetes.io/internal"
+	
 
-	// IngressAnnotationSourceRangesKey is the key of the annotation on an ingress to set allowed IP ranges on their LoadBalancers.
-	// It should be a comma-separated list of CIDRs.
-	IngressAnnotationSourceRangesKey = "vngcloud.ingress.kubernetes.io/whitelist-source-range"
 
-	// IngressControllerTag is added to the related resources.
-	IngressControllerTag = "vngcloud.ingress.kubernetes.io"
 
-	// IngressAnnotationTimeoutClientData is the timeout for frontend client inactivity.
-	// If not set, this value defaults to the vngcloud configuration key `timeout_client_data`.
-	// Refer to https://docs.openstack.org/vngcloud/latest/configuration/configref.html#haproxy_amphora.timeout_client_data
-	IngressAnnotationTimeoutClientData = "vngcloud.ingress.kubernetes.io/timeout-client-data"
-
-	// IngressAnnotationTimeoutMemberData is the timeout for backend member inactivity.
-	// If not set, this value defaults to the vngcloud configuration key `timeout_member_data`.
-	// Refer to https://docs.openstack.org/vngcloud/latest/configuration/configref.html#haproxy_amphora.timeout_member_data
-	IngressAnnotationTimeoutMemberData = "vngcloud.ingress.kubernetes.io/timeout-member-data"
-
-	// IngressAnnotationTimeoutMemberConnect is the timeout for backend member connection.
-	// If not set, this value defaults to the vngcloud configuration key `timeout_member_connect`.
-	// Refer to https://docs.openstack.org/vngcloud/latest/configuration/configref.html#haproxy_amphora.timeout_member_connect
-	IngressAnnotationTimeoutMemberConnect = "vngcloud.ingress.kubernetes.io/timeout-member-connect"
-
-	// IngressAnnotationTimeoutTCPInspect is the time to wait for TCP packets for content inspection.
-	// If not set, this value defaults to the vngcloud configuration key `timeout_tcp_inspect`.
-	// Refer to https://docs.openstack.org/vngcloud/latest/configuration/configref.html#haproxy_amphora.timeout_tcp_inspect
-	IngressAnnotationTimeoutTCPInspect = "vngcloud.ingress.kubernetes.io/timeout-tcp-inspect"
 
 	// IngressSecretCertName is certificate key name defined in the secret data.
 	IngressSecretCertName = "tls.crt"
 	// IngressSecretKeyName is private key name defined in the secret data.
 	IngressSecretKeyName = "tls.key"
+)
+
+const (
+	ServiceAnnotationLoadBalancerID = "vks.vngcloud.vn/load-balancer-id"
+	ServiceAnnotationPackageID      = "vks.vngcloud.vn/package-id"
 )

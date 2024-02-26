@@ -20,7 +20,6 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	apiv1 "k8s.io/api/core/v1"
-	lCoreV1 "k8s.io/api/core/v1"
 	nwv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
@@ -145,14 +144,14 @@ func getStringFromIngressAnnotation(ingress *nwv1.Ingress, annotationKey string,
 	return defaultValue
 }
 
-func getNodeAddressForLB(node *lCoreV1.Node) (string, error) {
+func getNodeAddressForLB(node *apiv1.Node) (string, error) {
 	addrs := node.Status.Addresses
 	if len(addrs) == 0 {
 		return "", errors.NewErrNodeAddressNotFound(node.Name, "")
 	}
 
 	for _, addr := range addrs {
-		if addr.Type == lCoreV1.NodeInternalIP {
+		if addr.Type == apiv1.NodeInternalIP {
 			return addr.Address, nil
 		}
 	}

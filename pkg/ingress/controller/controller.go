@@ -52,10 +52,8 @@ type Event struct {
 
 // Controller ...
 type Controller struct {
-	config           *config.Config
-	kubeClient       kubernetes.Interface
-	eventBroadcaster record.EventBroadcaster
-	eventRecorder    record.EventRecorder
+	config     *config.Config
+	kubeClient kubernetes.Interface
 
 	stopCh              chan struct{}
 	knownNodes          []*apiv1.Node
@@ -73,12 +71,9 @@ type Controller struct {
 	provider  *vconSdkClient.ProviderClient
 	vLBSC     *vconSdkClient.ServiceClient
 	vServerSC *vconSdkClient.ServiceClient
-
-	cluster *lObjects.Cluster
-
-	extraInfo    *ExtraInfo
-	metadataOpts metadata.Opts
-	api          API
+	cluster   *lObjects.Cluster
+	extraInfo *ExtraInfo
+	api       API
 
 	SecretTrackers      *SecretTracker
 	isUpdateDefaultPool bool // it have a bug when update default pool member, set this to reapply when update pool member

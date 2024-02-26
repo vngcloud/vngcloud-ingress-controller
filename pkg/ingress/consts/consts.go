@@ -7,7 +7,7 @@ import (
 
 const (
 	DEFAULT_PORTAL_NAME_LENGTH        = 50      // All the name must be less than 50 characters
-	DEFAULT_HASH_NAME_LENGTH          = 5      // a unique hash name
+	DEFAULT_HASH_NAME_LENGTH          = 5       // a unique hash name
 	DEFAULT_PORTAL_DESCRIPTION_LENGTH = 255     // All the description must be less than 255 characters
 	DEFAULT_LB_PREFIX_NAME            = "annd2" // "clu" is abbreviated of "cluster"
 	DEFAULT_NAME_DEFAULT_POOL         = "vks_default_pool"
@@ -17,7 +17,7 @@ const (
 )
 
 var OPT_POOL_DEFAULT = pool.CreateOpts{
-	Algorithm:     pool.CreateOptsAlgorithmOptSourceIP, // CreateOptsAlgorithmOptLeastConn, CreateOptsAlgorithmOptRoundRobin
+	Algorithm:     pool.CreateOptsAlgorithmOptRoundRobin, //CreateOptsAlgorithmOptSourceIP, // CreateOptsAlgorithmOptLeastConn, CreateOptsAlgorithmOptRoundRobin
 	PoolName:      DEFAULT_NAME_DEFAULT_POOL,
 	PoolProtocol:  pool.CreateOptsProtocolOptHTTP,
 	Stickiness:    PointerOf[bool](false),

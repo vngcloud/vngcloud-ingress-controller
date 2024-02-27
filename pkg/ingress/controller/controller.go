@@ -919,7 +919,7 @@ func (c *Controller) ensureLoadBalancer(ing *nwv1.Ingress) (string, error) {
 		lbName := GetResourceName(ing, c.getClusterID())
 		packageID := getStringFromIngressAnnotation(ing, ServiceAnnotationPackageID, consts.DEFAULT_PACKAGE_ID)
 
-		lb, err := c.api.CreateLB(lbName, packageID, c.cluster.SubnetID,
+		lb, err := c.api.CreateLB(lbName, packageID, c.getSubnetID(),
 			loadbalancer.CreateOptsSchemeOptInternet,
 			loadbalancer.CreateOptsTypeOptLayer7)
 		if err != nil {

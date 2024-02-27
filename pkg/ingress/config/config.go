@@ -23,10 +23,10 @@ import (
 
 // Config struct contains ingress controller configuration
 type Config struct {
-	ClusterID   string          `mapstructure:"cluster-id"`
-	Kubernetes  kubeConfig      `mapstructure:"kubernetes"`
-	Global      client.AuthOpts `mapstructure:"global"`
-	Metadata    metadata.Opts   `mapstructure:"metadata"`
+	ClusterID  string          `mapstructure:"clusterID"`
+	Kubernetes kubeConfig      `mapstructure:"kubernetes"`
+	Global     client.AuthOpts `mapstructure:"global"`
+	Metadata   metadata.Opts   `mapstructure:"metadata"`
 }
 
 // Configuration for connecting to Kubernetes API server, either api_host or kubeconfig should be configured.

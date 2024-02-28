@@ -322,7 +322,7 @@ func (c *Controller) processNextItem() bool {
 
 func (c *Controller) processItem(event Event) error {
 	klog.Infoln("---------------- processItem() ----------------")
-	klog.Infoln("EVENT:", event)
+	klog.Infoln("EVENT:", event.Type)
 	// time.Sleep(90 * time.Second)
 	// return nil
 
@@ -1213,9 +1213,18 @@ func (c *Controller) ensureDefaultPoolMember(lbID, poolID string, oldMembers, ne
 	needDelete := getRedundant(oldMembers, newMembers)
 	needCreate := newMembers // need ensure
 
-	logrus.Infof("memGets: %v", memsGet)
-	logrus.Infof("needDelete: %v", needDelete)
-	logrus.Infof("needCreate: %v", needCreate)
+	klog.Infof("memGets: %v", memsGet)
+	for _, m := range memsGetConvert {
+		klog.Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
+	}
+	klog.Infof("needDelete: %v", needDelete)
+	for _, m := range needDelete {
+		klog.Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
+	}
+	klog.Infof("needCreate: %v", needCreate)
+	for _, m := range needCreate {
+		klog.Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
+	}
 
 	updateMember := make([]*pool.Member, 0)
 	for _, m := range memsGetConvert {

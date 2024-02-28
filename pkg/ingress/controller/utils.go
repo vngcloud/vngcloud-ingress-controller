@@ -162,6 +162,7 @@ func ConvertObjectToPoolMember(obj *lObjects.Member) *pool.Member {
 		MonitorPort: obj.MonitorPort,
 		Backup:      obj.Backup,
 		Weight:      obj.Weight,
+		Name:        obj.Name,
 	}
 }
 

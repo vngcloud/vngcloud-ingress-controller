@@ -462,6 +462,19 @@ func (c *API) FindListenerByName(lbID, name string) (*lObjects.Listener, error) 
 	return nil, errors.ErrNotFound
 }
 
+func (c *API) FindListenerByPort(lbID string, port int) (*lObjects.Listener, error) {
+	listeners, err := c.ListListenerOfLB(lbID)
+	if err != nil {
+		return nil, err
+	}
+	for _, listener := range listeners {
+		if listener.ProtocolPort == port {
+			return listener, nil
+		}
+	}
+	return nil, errors.ErrNotFound
+}
+
 func (c *API) WaitForLBActive(lbID string) *lObjects.LoadBalancer {
 	for {
 		lb, err := c.GetLB(lbID)

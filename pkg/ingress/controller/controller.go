@@ -1286,7 +1286,7 @@ func (c *Controller) ensurePoolMember(lbID, poolID string, members []*pool.Membe
 
 func (c *Controller) ensureListener(lbID, lisName string, listenerOpts listener.CreateOpts) (*lObjects.Listener, error) {
 	klog.Infof("------------ ensureListener ----------")
-	lis, err := c.api.FindListenerByName(lbID, lisName)
+	lis, err := c.api.FindListenerByPort(lbID, listenerOpts.ListenerProtocolPort)
 	if err != nil {
 		if err == errors.ErrNotFound {
 			// create listener point to default pool
@@ -1297,7 +1297,7 @@ func (c *Controller) ensureListener(lbID, lisName string, listenerOpts listener.
 				return nil, err
 			}
 			c.api.WaitForLBActive(lbID)
-			lis, err = c.api.FindListenerByName(lbID, lisName)
+			lis, err = c.api.FindListenerByPort(lbID, listenerOpts.ListenerProtocolPort)
 			if err != nil {
 				logrus.Errorln("error when find listener", err)
 				return nil, err

@@ -1,0 +1,51 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dangbh2
+  annotations:
+    kubernetes.io/ingress.class: "vngcloud"
+spec:
+  # ingressClassName: "vngcloud"
+  defaultBackend:
+    service:
+      name: goapp-debug
+      port:
+        number: 1111
+  tls:
+    - hosts:
+        - example.com
+      secretName: secret-annd2
+    - hosts:
+        - kkk.example.com
+        - hhh.example.com
+      secretName: secret-wildcard-annd2
+  rules:
+    - http:
+        paths:
+          - path: /2
+            pathType: Exact
+            backend:
+              service:
+                name: goapp-debug
+                port:
+                  number: 2222
+    - host: example.com
+      http:
+        paths:
+          - path: /3
+            pathType: Exact
+            backend:
+              service:
+                name: goapp-debug
+                port:
+                  number: 3333
+    - host: kkk.example.com
+      http:
+        paths:
+          - path: /4
+            pathType: Exact
+            backend:
+              service:
+                name: goapp-debug
+                port:
+                  number: 4444

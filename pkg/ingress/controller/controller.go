@@ -79,7 +79,7 @@ type Controller struct {
 	isUpdateDefaultPool bool // it have a bug when update default pool member, set this to reapply when update pool member
 }
 
-// NewController creates a new OpenStack Ingress controller.
+// NewController creates a new VngCloud Ingress controller.
 func NewController(conf config.Config) *Controller {
 	// initialize k8s client
 	kubeClient, err := createApiserverClient(conf.Kubernetes.ApiserverHost, conf.Kubernetes.KubeConfig)
@@ -201,7 +201,7 @@ func NewController(conf config.Config) *Controller {
 	return controller
 }
 
-// Start starts the openstack ingress controller.
+// Start starts the vngcloud ingress controller.
 func (c *Controller) Start() {
 	klog.Infoln("------------ Start() ------------")
 	defer close(c.stopCh)
@@ -340,8 +340,8 @@ func (c *Controller) processItem(event Event) error {
 		logger.Info("creating ingress")
 
 		if err := c.ensureIngress(oldIng, ing); err != nil {
-			utilruntime.HandleError(fmt.Errorf("failed to create openstack resources for ingress %s: %v", key, err))
-			c.recorder.Event(ing, apiv1.EventTypeWarning, "Failed", fmt.Sprintf("Failed to create openstack resources for ingress %s: %v", key, err))
+			utilruntime.HandleError(fmt.Errorf("failed to create vngcloud resources for ingress %s: %v", key, err))
+			c.recorder.Event(ing, apiv1.EventTypeWarning, "Failed", fmt.Sprintf("Failed to create vngcloud resources for ingress %s: %v", key, err))
 		} else {
 			c.recorder.Event(ing, apiv1.EventTypeNormal, "Created", fmt.Sprintf("Ingress %s", key))
 		}
@@ -349,8 +349,8 @@ func (c *Controller) processItem(event Event) error {
 		logger.Info("updating ingress")
 
 		if err := c.ensureIngress(oldIng, ing); err != nil {
-			utilruntime.HandleError(fmt.Errorf("failed to update openstack resources for ingress %s: %v", key, err))
-			c.recorder.Event(ing, apiv1.EventTypeWarning, "Failed", fmt.Sprintf("Failed to update openstack resources for ingress %s: %v", key, err))
+			utilruntime.HandleError(fmt.Errorf("failed to update vngcloud resources for ingress %s: %v", key, err))
+			c.recorder.Event(ing, apiv1.EventTypeWarning, "Failed", fmt.Sprintf("Failed to update vngcloud resources for ingress %s: %v", key, err))
 		} else {
 			c.recorder.Event(ing, apiv1.EventTypeNormal, "Updated", fmt.Sprintf("Ingress %s", key))
 		}
@@ -358,8 +358,8 @@ func (c *Controller) processItem(event Event) error {
 		logger.Info("deleting ingress")
 
 		if err := c.deleteIngress(ing); err != nil {
-			utilruntime.HandleError(fmt.Errorf("failed to delete openstack resources for ingress %s: %v", key, err))
-			c.recorder.Event(ing, apiv1.EventTypeWarning, "Failed", fmt.Sprintf("Failed to delete openstack resources for ingress %s: %v", key, err))
+			utilruntime.HandleError(fmt.Errorf("failed to delete vngcloud resources for ingress %s: %v", key, err))
+			c.recorder.Event(ing, apiv1.EventTypeWarning, "Failed", fmt.Sprintf("Failed to delete vngcloud resources for ingress %s: %v", key, err))
 		} else {
 			c.recorder.Event(ing, apiv1.EventTypeNormal, "Deleted", fmt.Sprintf("Ingress %s", key))
 		}

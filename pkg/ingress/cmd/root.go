@@ -27,9 +27,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"k8s.io/cloud-provider-openstack/pkg/ingress/config"
-	"k8s.io/cloud-provider-openstack/pkg/ingress/controller"
-	"k8s.io/cloud-provider-openstack/pkg/version"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/config"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/controller"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/version"
 	"k8s.io/component-base/cli"
 	"k8s.io/klog/v2"
 )
@@ -42,9 +42,9 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "ingress-openstack",
-	Short: "Ingress controller for OpenStack",
-	Long:  `Ingress controller for OpenStack`,
+	Use:   "ingress-vngcloud",
+	Short: "Ingress controller for VngCloud",
+	Long:  `Ingress controller for VngCloud`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		osIngress := controller.NewController(conf)

@@ -14,7 +14,7 @@ import (
 	"github.com/vngcloud/vngcloud-go-sdk/client"
 	lObjects "github.com/vngcloud/vngcloud-go-sdk/vngcloud/objects"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/loadbalancer"
-	"k8s.io/cloud-provider-openstack/pkg/ingress/utils/errors"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/errors"
 	"k8s.io/klog/v2"
 )
 

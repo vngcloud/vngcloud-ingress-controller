@@ -17,8 +17,8 @@ limitations under the License.
 package config
 
 import (
-	"k8s.io/cloud-provider-openstack/pkg/ingress/client"
-	"k8s.io/cloud-provider-openstack/pkg/ingress/utils/metadata"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/client"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/metadata"
 )
 
 // Config struct contains ingress controller configuration

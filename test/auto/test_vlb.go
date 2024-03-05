@@ -9,7 +9,7 @@ import (
 	lObjects "github.com/vngcloud/vngcloud-go-sdk/vngcloud/objects"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/identity/v2/extensions/oauth2"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/identity/v2/tokens"
-	"k8s.io/cloud-provider-openstack/pkg/ingress/controller"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/controller"
 )
 
 var (

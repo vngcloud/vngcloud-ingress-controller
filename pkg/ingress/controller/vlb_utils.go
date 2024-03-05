@@ -2,10 +2,11 @@ package controller
 
 import (
 	"fmt"
+
 	client2 "github.com/vngcloud/vngcloud-go-sdk/client"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud"
 	v1Portal "github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/portal/v1"
-	"k8s.io/cloud-provider-openstack/pkg/ingress/utils/metadata"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/metadata"
 	"k8s.io/klog/v2"
 )
 

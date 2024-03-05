@@ -1,7 +1,3 @@
-# golang-client Makefile
-# Follows the interface defined in the Golang CTI proposed
-# in https://review.openstack.org/410355
-
 #REPO_VERSION?=$(shell git describe --tags)
 
 GIT_HOST = k8s.io
@@ -37,7 +33,7 @@ VERSION         := v0.0.0
 GOARCH		:=
 GOFLAGS		:=
 TAGS		:=
-LDFLAGS		:= "-w -s -X 'k8s.io/component-base/version.gitVersion=$(VERSION)' -X 'k8s.io/cloud-provider-openstack/pkg/version.Version=$(VERSION)'"
+LDFLAGS		:= "-w -s -X 'k8s.io/component-base/version.gitVersion=$(VERSION)' -X 'github.com/vngcloud/vngcloud-ingress-controller/pkg/version.Version=$(VERSION)'"
 GOX_LDFLAGS	:= $(shell echo "$(LDFLAGS) -extldflags \"-static\"")
 REGISTRY	?= vcr.vngcloud.vn/60108-annd2-ingress
 IMAGE_OS	?= linux

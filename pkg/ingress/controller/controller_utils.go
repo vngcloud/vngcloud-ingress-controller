@@ -18,14 +18,15 @@ package controller
 
 import (
 	"fmt"
+
 	log "github.com/sirupsen/logrus"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/errors"
 	apiv1 "k8s.io/api/core/v1"
 	nwv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/cloud-provider-openstack/pkg/ingress/utils/errors"
 )
 
 // IsValid returns true if the given Ingress either doesn't specify

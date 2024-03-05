@@ -18,6 +18,10 @@ import (
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/loadbalancer"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/policy"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/config"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/consts"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/errors"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/metadata"
 	apiv1 "k8s.io/api/core/v1"
 	nwv1 "k8s.io/api/networking/v1"
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,10 +37,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/cloud-provider-openstack/pkg/ingress/config"
-	"k8s.io/cloud-provider-openstack/pkg/ingress/consts"
-	"k8s.io/cloud-provider-openstack/pkg/ingress/utils/errors"
-	"k8s.io/cloud-provider-openstack/pkg/ingress/utils/metadata"
 	klog "k8s.io/klog/v2"
 )
 

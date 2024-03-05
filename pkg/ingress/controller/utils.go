@@ -12,9 +12,9 @@ import (
 	"github.com/sirupsen/logrus"
 	lObjects "github.com/vngcloud/vngcloud-go-sdk/vngcloud/objects"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/consts"
 	apiv1 "k8s.io/api/core/v1"
 	nwv1 "k8s.io/api/networking/v1"
-	"k8s.io/cloud-provider-openstack/pkg/ingress/consts"
 )
 
 func EncodeToValidName(str string) string {

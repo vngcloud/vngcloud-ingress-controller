@@ -22,7 +22,6 @@ type VLBOpts struct {
 	EnableVMonitor bool   `gcfg:"enable-vmonitor"` // default to false
 }
 
-
 const (
 	DEFAULT_PORTAL_NAME_LENGTH = 50
 	ACTIVE_LOADBALANCER_STATUS = "ACTIVE"
@@ -61,11 +60,6 @@ const (
 	// It's copied over to kubeadm until it's merged in core: https://github.com/kubernetes/kubernetes/pull/39112
 	// Deprecated in favor of LabelNodeExcludeLB
 	DeprecatedLabelNodeRoleMaster = "node-role.kubernetes.io/master"
-
-	
-
-
-
 
 	// IngressSecretCertName is certificate key name defined in the secret data.
 	IngressSecretCertName = "tls.crt"

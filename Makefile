@@ -29,13 +29,13 @@ TAR_FILE	?= rootfs.tar
 GOOS		?= $(shell go env GOOS)
 GOPROXY		?= $(shell go env GOPROXY)
 # VERSION         ?= $(shell git describe --dirty --tags --match='v*')
-VERSION         := v0.0.0
+VERSION         := v0.1.0
 GOARCH		:=
 GOFLAGS		:=
 TAGS		:=
 LDFLAGS		:= "-w -s -X 'k8s.io/component-base/version.gitVersion=$(VERSION)' -X 'github.com/vngcloud/vngcloud-ingress-controller/pkg/version.Version=$(VERSION)'"
 GOX_LDFLAGS	:= $(shell echo "$(LDFLAGS) -extldflags \"-static\"")
-REGISTRY	?= vcr.vngcloud.vn/60108-annd2-ingress
+REGISTRY	?= vcr.vngcloud.vn/81-vks-public
 IMAGE_OS	?= linux
 IMAGE_NAMES	?= vngcloud-ingress-controller
 ARCH		?= amd64
@@ -196,7 +196,6 @@ annd2:
 
 	make build-local-image-vngcloud-ingress-controller
 	docker push $(REGISTRY)/vngcloud-ingress-controller:$(VERSION)
-	# docker push vcr.vngcloud.vn/60108-ingress-controller/vngcloud-ingress-controller:v0.0.0
 
 .PHONY: tidy
 tidy:

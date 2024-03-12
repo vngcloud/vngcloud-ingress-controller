@@ -109,10 +109,10 @@ func GetResourceName(ing *nwv1.Ingress, clusterID string) string {
 	return fmt.Sprintf("vks_%s_%s_%s_%s", clusterID[8:16], TrimString(ing.Namespace, 10), TrimString(ing.Name, 10), TrimString(hash, consts.DEFAULT_HASH_NAME_LENGTH))
 }
 func GetPolicyName(prefix string, mode bool, ruleIndex, pathIndex int) string {
-	return fmt.Sprintf("%s_%t_r%d_p%d", prefix, mode, ruleIndex, pathIndex)
+	return fmt.Sprintf("vks_%s_%t_r%d_p%d", prefix, mode, ruleIndex, pathIndex)
 }
 func GetPoolName(prefix, serviceName string, port int) string {
-	return fmt.Sprintf("%s_%s_%d", prefix, TrimString(strings.ReplaceAll(serviceName, "/", "-"), 35), port)
+	return fmt.Sprintf("vks_%s_%s_%d", prefix, TrimString(strings.ReplaceAll(serviceName, "/", "-"), 35), port)
 }
 
 func GetCertificateName(clusterID, namespace, name string) string {

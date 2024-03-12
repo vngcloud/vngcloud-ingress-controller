@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -469,6 +470,10 @@ func (c *API) FindListenerByPort(lbID string, port int) (*lObjects.Listener, err
 	}
 	for _, listener := range listeners {
 		if listener.ProtocolPort == port {
+			if (port == 443 && listener.Protocol != "HTTPS") || (port == 80 && listener.Protocol != "HTTP") {
+				logrus.Infof("listener %s has wrong protocol %s or wrong port %d", listener.UUID, listener.Protocol, listener.ProtocolPort)
+				return nil, fmt.Errorf("listener %s has wrong protocol %s or wrong port %d", listener.UUID, listener.Protocol, listener.ProtocolPort)
+			}
 			return listener, nil
 		}
 	}

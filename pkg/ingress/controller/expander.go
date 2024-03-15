@@ -9,16 +9,8 @@ import (
 )
 
 type PoolExpander struct {
-	Name string
 	UUID string
-	// Members []lObjects.Member
-	Members []*pool.Member
-	// Protocol          string
-	// Description       string
-	// LoadBalanceMethod string
-	// Status            string
-	// Stickiness        bool
-	// TLSEncryption     bool
+	pool.CreateOpts
 }
 
 type PolicyExpander struct {
@@ -48,12 +40,10 @@ type CertificateExpander struct {
 }
 
 type IngressInspect struct {
-	defaultPoolName string
-	defaultPoolId   string
-	name            string
-	namespace       string
+	defaultPool *PoolExpander
+	name        string
+	namespace   string
 
-	defaultPoolMembers  []*pool.Member
 	PolicyExpander      []*PolicyExpander
 	PoolExpander        []*PoolExpander
 	ListenerExpander    []*ListenerExpander
@@ -61,7 +51,7 @@ type IngressInspect struct {
 }
 
 func (ing *IngressInspect) Print() {
-	fmt.Println("DEFAULT POOL: name:", ing.defaultPoolName, "id:", ing.defaultPoolId, "members:", ing.defaultPoolMembers)
+	fmt.Println("DEFAULT POOL: name:", ing.defaultPool.PoolName, "id:", ing.defaultPool.UUID, "members:", ing.defaultPool.Members)
 	for _, l := range ing.ListenerExpander {
 		fmt.Println("LISTENER: id:", l.UUID)
 	}
@@ -69,7 +59,7 @@ func (ing *IngressInspect) Print() {
 		fmt.Println("---- POLICY: id:", p.UUID, "name:", p.Name, "redirectPoolName:", p.RedirectPoolName, "redirectPoolId:", p.RedirectPoolID, "action:", p.Action, "l7Rules:", p.L7Rules)
 	}
 	for _, p := range ing.PoolExpander {
-		fmt.Println("++++ POOL: name:", p.Name, "uuid:", p.UUID, "members:", p.Members)
+		fmt.Println("++++ POOL: name:", p.PoolName, "uuid:", p.UUID, "members:", p.Members)
 	}
 }
 
@@ -91,10 +81,10 @@ func MapIDExpander(old, cur *IngressInspect) {
 	// map pool
 	mapPoolIndex := make(map[string]int)
 	for curIndex, curPol := range cur.PoolExpander {
-		mapPoolIndex[curPol.Name] = curIndex
+		mapPoolIndex[curPol.PoolName] = curIndex
 	}
 	for _, oldPol := range old.PoolExpander {
-		if curIndex, ok := mapPoolIndex[oldPol.Name]; ok {
+		if curIndex, ok := mapPoolIndex[oldPol.PoolName]; ok {
 			oldPol.UUID = cur.PoolExpander[curIndex].UUID
 		} else {
 			logrus.Errorf("pool not found when map ingress: %v", oldPol)

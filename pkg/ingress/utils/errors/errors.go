@@ -34,7 +34,6 @@ type ErrNodeAddressNotFound struct {
 }
 
 // ErrNotFound is used to inform that the object is missing
-var ErrLoadBalancerIDNotFoundAnnotation = errors.New("failed to find LoadBalancerID from Annotation")
-
-// ErrNotFound is used to inform that the object is missing
 var ErrNotFound = errors.New("failed to find object")
+
+var ErrLoadBalancerIDNotFoundAnnotation = errors.New("failed to find LoadBalancerID from Annotation")

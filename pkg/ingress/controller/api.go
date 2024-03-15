@@ -60,21 +60,11 @@ func (c *API) GetLB(lbID string) (*lObjects.LoadBalancer, error) {
 	return resp, err
 }
 
-func (c *API) CreateLB(name, packageId, subnetID string,
-	scheme loadbalancer.CreateOptsSchemeOpt,
-	typeLB loadbalancer.CreateOptsTypeOpt,
-) (*lObjects.LoadBalancer, error) {
-	logrus.Infoln("*****API__CreateLB: ", "name: ", name, "packageId: ", packageId, "subnetID: ", subnetID, "ProjectID: ", c.ProjectID)
-	opt := &loadbalancer.CreateOpts{
-		Name:      name,
-		PackageID: packageId,
-		Scheme:    scheme,
-		SubnetID:  subnetID,
-		Type:      typeLB,
-	}
-	opt.ProjectID = c.ProjectID
+func (c *API) CreateLB(lbOptions *loadbalancer.CreateOpts) (*lObjects.LoadBalancer, error) {
+	logrus.Infoln("*****API__CreateLB: ", "name: ", lbOptions.Name, "packageID: ", lbOptions.PackageID, "scheme: ", lbOptions.Scheme, "subnetID: ", lbOptions.SubnetID, "type: ", lbOptions.Type)
+	lbOptions.ProjectID = c.ProjectID
 
-	resp, err := loadbalancer.Create(c.VLBSC, opt)
+	resp, err := loadbalancer.Create(c.VLBSC, lbOptions)
 	logrus.Infoln("*****API__CreateLB: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
@@ -98,6 +88,28 @@ func (c *API) DeleteLB(lbID string) error {
 	}
 
 	logrus.Infoln("*****API__DeleteLB: ", "err: ", err)
+	return err
+}
+
+func (c *API) ResizeLB(lbID, packageID string) error {
+	logrus.Infoln("*****API__ResizeLB: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID, "packageID: ", packageID)
+	opt := &loadbalancer.UpdateOpts{}
+	opt.ProjectID = c.ProjectID
+	opt.LoadBalancerID = lbID
+	opt.PackageID = packageID
+
+	var err error
+	for {
+		_, err = loadbalancer.Update(c.VLBSC, opt)
+		if err != nil && IsLoadBalancerNotReady(err) {
+			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			time.Sleep(5 * time.Second)
+			continue
+		} else {
+			break
+		}
+	}
+	logrus.Infoln("*****API__ResizeLB: ", "err: ", err)
 	return err
 }
 
@@ -206,6 +218,28 @@ func (c *API) DeletePool(lbID, poolID string) error {
 		}
 	}
 	logrus.Infoln("*****API__DeletePool: ", "err: ", err)
+	return err
+}
+
+func (c *API) UpdatePool(lbID, poolID string, opt *pool.UpdateOpts) error {
+	logrus.Infoln("*****API__UpdatePool: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID, "poolID: ", poolID)
+	logrus.Infoln("*****API__UpdatePool: ", "opt: ", opt)
+	opt.ProjectID = c.ProjectID
+	opt.LoadBalancerID = lbID
+	opt.PoolID = poolID
+
+	var err error
+	for {
+		err = pool.Update(c.VLBSC, opt)
+		if err != nil && IsLoadBalancerNotReady(err) {
+			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			time.Sleep(5 * time.Second)
+			continue
+		} else {
+			break
+		}
+	}
+	logrus.Infoln("*****API__UpdatePool: ", "err: ", err)
 	return err
 }
 
@@ -386,11 +420,11 @@ func (c *API) ImportCertificate(opt *certificates.ImportOpts) (*lObjects.Certifi
 }
 
 func (c *API) ListCertificate() ([]*lObjects.Certificate, error) {
-	logrus.Infoln("*****API__ListCertificate: ", "ProjectID: ", c.ProjectID)
+	// logrus.Infoln("*****API__ListCertificate: ", "ProjectID: ", c.ProjectID)
 	opt := &certificates.ListOpts{}
 	opt.ProjectID = c.ProjectID
 	resp, err := certificates.List(c.VLBSC, opt)
-	logrus.Infoln("*****API__ListCertificate: ", "resp: ", resp, "err: ", err)
+	// logrus.Infoln("*****API__ListCertificate: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 

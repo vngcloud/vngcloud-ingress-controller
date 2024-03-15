@@ -20,6 +20,8 @@ import (
 	"fmt"
 
 	log "github.com/sirupsen/logrus"
+	lObjects "github.com/vngcloud/vngcloud-go-sdk/vngcloud/objects"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
 	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/errors"
 	apiv1 "k8s.io/api/core/v1"
 	nwv1 "k8s.io/api/networking/v1"
@@ -135,16 +137,6 @@ func getNodeConditionPredicate() NodeConditionPredicate {
 // CERT
 ///////////////////////////////////////////////////////////////////////////////////////
 
-// getStringFromIngressAnnotation searches a given Ingress for a specific annotationKey and either returns the
-// annotation's value or a specified defaultSetting
-func getStringFromIngressAnnotation(ingress *nwv1.Ingress, annotationKey string, defaultValue string) string {
-	if annotationValue, ok := ingress.Annotations[annotationKey]; ok {
-		return annotationValue
-	}
-
-	return defaultValue
-}
-
 func getNodeAddressForLB(node *apiv1.Node) (string, error) {
 	addrs := node.Status.Addresses
 	if len(addrs) == 0 {
@@ -158,4 +150,23 @@ func getNodeAddressForLB(node *apiv1.Node) (string, error) {
 	}
 
 	return addrs[0].Address, nil
+}
+
+func comparePoolOptions(ipool *lObjects.Pool, poolOptions *pool.CreateOpts) *pool.UpdateOpts {
+	isNeedUpdate := false
+	updateOptions := &pool.UpdateOpts{
+		Algorithm:     poolOptions.Algorithm,
+		Stickiness:    poolOptions.Stickiness,
+		TLSEncryption: poolOptions.TLSEncryption,
+		HealthMonitor: poolOptions.HealthMonitor,
+	}
+	if ipool.LoadBalanceMethod != string(poolOptions.Algorithm) ||
+		ipool.Stickiness != *poolOptions.Stickiness ||
+		ipool.TLSEncryption != *poolOptions.TLSEncryption {
+		isNeedUpdate = true
+	}
+	if !isNeedUpdate {
+		return nil
+	}
+	return updateOptions
 }

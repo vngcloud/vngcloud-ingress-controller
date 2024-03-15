@@ -67,7 +67,42 @@ const (
 	IngressSecretKeyName = "tls.key"
 )
 
+// Annotations
 const (
-	ServiceAnnotationLoadBalancerID = "vks.vngcloud.vn/load-balancer-id"
-	ServiceAnnotationPackageID      = "vks.vngcloud.vn/package-id"
+	DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX = "vks.vngcloud.vn"
+
+	// load balancer
+	ServiceAnnotationLoadBalancerID       = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/load-balancer-id"   // set via annotation
+	ServiceAnnotationLoadBalancerName     = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/load-balancer-name" // only set via the annotation
+	ServiceAnnotationPackageID            = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/package-id"         // both annotation and cloud-config
+	ServiceAnnotationLoadBalancerInternal = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/internal-load-balancer"
+
+	// ServiceAnnotationEnableSecgroupDefault = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/enable-secgroup-default" // set via annotation
+
+	// listener
+	ServiceAnnotationIdleTimeoutClient     = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/idle-timeout-client"     // both annotation and cloud-config
+	ServiceAnnotationIdleTimeoutMember     = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/idle-timeout-member"     // both annotation and cloud-config
+	ServiceAnnotationIdleTimeoutConnection = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/idle-timeout-connection" // both annotation and cloud-config
+	ServiceAnnotationListenerAllowedCIDRs  = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/listener-allowed-cidrs"  // both annotation and cloud-config
+
+	// pool
+	ServiceAnnotationPoolAlgorithm   = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/pool-algorithm" // both annotation and cloud-config "ROUND_ROBIN" "LEAST_CONNECTIONS" "SOURCE_IP"
+	ServiceAnnotationMonitorProtocol = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/monitor-protocol"
+
+	// health tcp protocol
+	ServiceAnnotationHealthyThreshold          = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/monitor-healthy-threshold"
+	ServiceAnnotationMonitorUnhealthyThreshold = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/monitor-unhealthy-threshold"
+	ServiceAnnotationMonitorTimeout            = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/monitor-timeout"
+	ServiceAnnotationMonitorInterval           = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/monitor-interval"
+
+	// health http protocol
+	ServiceAnnotationMonitorHttpMethod      = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/monitor-http-method"
+	ServiceAnnotationMonitorHttpPath        = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/monitor-http-path"
+	ServiceAnnotationMonitorHttpSuccessCode = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/monitor-http-success-code"
+	ServiceAnnotationMonitorHttpVersion     = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/monitor-http-version"
+	ServiceAnnotationMonitorHttpDomainName  = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/monitor-http-domain-name"
+
+	// new
+	ServiceAnnotationEnableStickySession = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/enable-sticky-session"
+	ServiceAnnotationEnableTLSEncryption = DEFAULT_K8S_SERVICE_ANNOTATION_PREFIX + "/enable-tls-encryption"
 )

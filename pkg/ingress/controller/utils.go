@@ -12,7 +12,6 @@ import (
 	"github.com/sirupsen/logrus"
 	lObjects "github.com/vngcloud/vngcloud-go-sdk/vngcloud/objects"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
-	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/consts"
 	apiv1 "k8s.io/api/core/v1"
 	nwv1 "k8s.io/api/networking/v1"
 )
@@ -106,7 +105,7 @@ func GetResourceHashName(ing *nwv1.Ingress, clusterID string) string {
 // GetResourceName get Ingress related resource name.
 func GetResourceName(ing *nwv1.Ingress, clusterID string) string {
 	hash := GetResourceHashName(ing, clusterID)
-	return fmt.Sprintf("vks_%s_%s_%s_%s", clusterID[8:16], TrimString(ing.Namespace, 10), TrimString(ing.Name, 10), TrimString(hash, consts.DEFAULT_HASH_NAME_LENGTH))
+	return fmt.Sprintf("vks_%s_%s_%s_%s", clusterID[8:16], TrimString(ing.Namespace, 10), TrimString(ing.Name, 10), TrimString(hash, DEFAULT_HASH_NAME_LENGTH))
 }
 func GetPolicyName(prefix string, mode bool, ruleIndex, pathIndex int) string {
 	return fmt.Sprintf("vks_%s_%t_r%d_p%d", prefix, mode, ruleIndex, pathIndex)
@@ -118,7 +117,7 @@ func GetPoolName(prefix, serviceName string, port int) string {
 func GetCertificateName(clusterID, namespace, name string) string {
 	fullName := fmt.Sprintf("%s-%s-%s", clusterID, namespace, name)
 	hashName := HashString(fullName)
-	newName := fmt.Sprintf("vks-%s-%s-%s-%s-", clusterID[8:16], TrimString(namespace, 10), TrimString(name, 10), TrimString(hashName, consts.DEFAULT_HASH_NAME_LENGTH))
+	newName := fmt.Sprintf("vks-%s-%s-%s-%s-", clusterID[8:16], TrimString(namespace, 10), TrimString(name, 10), TrimString(hashName, DEFAULT_HASH_NAME_LENGTH))
 	for _, char := range newName {
 		if !unicode.IsLetter(char) && !unicode.IsDigit(char) && char != '-' && char != '.' {
 			newName = strings.ReplaceAll(newName, string(char), "-")

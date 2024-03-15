@@ -14,7 +14,6 @@ import (
 
 var (
 	IDENTITY_URL  = "https://iamapis.vngcloud.vn/accounts-api/v2"
-	vLbURL        = "https://hcm-3.api.vngcloud.vn/vserver/vserver-gateway/v2"
 	CLIENT_ID     = ""
 	CLIENT_SECRET = ""
 	PROJECT_ID    = ""

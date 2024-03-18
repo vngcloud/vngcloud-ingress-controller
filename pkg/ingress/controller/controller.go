@@ -971,7 +971,7 @@ func (c *Controller) ensureLoadBalancer(ing *nwv1.Ingress) (string, error) {
 
 	ensureAnnotation := func() {
 		if lbName, ok := ing.Annotations[ServiceAnnotationLoadBalancerName]; ok && lb.Name != lbName {
-			klog.Warning("Annotation lb name not match with lb name, should use when create lb")
+			logrus.Warnf("Annotation %s not match, only meaning when create new load-balancer", ServiceAnnotationLoadBalancerName)
 		}
 		if packageID, ok := ing.Annotations[ServiceAnnotationPackageID]; ok && lb.PackageID != packageID {
 			klog.Info("Resize load-balancer package to match annotation: ", packageID)
@@ -981,6 +981,9 @@ func (c *Controller) ensureLoadBalancer(ing *nwv1.Ingress) (string, error) {
 				return
 			}
 			c.api.WaitForLBActive(lbID)
+		}
+		if option, ok := ing.Annotations[ServiceAnnotationLoadBalancerInternal]; ok && lb.Internal != (option == "true") {
+			logrus.Warnf("Annotation %s not match, only meaning when create new load-balancer", ServiceAnnotationLoadBalancerInternal)
 		}
 	}
 	ensureAnnotation()
@@ -1375,33 +1378,8 @@ func (c *Controller) ensureListener(lbID, lisName string, listenerOpts listener.
 		}
 	}
 
-	updateOpts := &listener.UpdateOpts{
-		AllowedCidrs:                lis.AllowedCidrs,
-		DefaultPoolId:               lis.DefaultPoolId,
-		TimeoutClient:               lis.TimeoutClient,
-		TimeoutConnection:           lis.TimeoutConnection,
-		TimeoutMember:               lis.TimeoutMember,
-		Headers:                     lis.Headers,
-		DefaultCertificateAuthority: lis.DefaultCertificateAuthority,
-		ClientCertificate:           lis.ClientCertificateAuthentication,
-	}
-	isUpdate := false
-
-	if lis.DefaultPoolId != listenerOpts.DefaultPoolId && listenerOpts.DefaultPoolId != "" {
-		updateOpts.DefaultPoolId = listenerOpts.DefaultPoolId
-		isUpdate = true
-		klog.Infof("listener need update default pool id: %s", listenerOpts.DefaultPoolId)
-	}
-
-	if listenerOpts.DefaultCertificateAuthority != nil && (lis.DefaultCertificateAuthority == nil || *(lis.DefaultCertificateAuthority) != *(listenerOpts.DefaultCertificateAuthority)) {
-		updateOpts.DefaultCertificateAuthority = listenerOpts.DefaultCertificateAuthority
-		isUpdate = true
-		klog.Infof("listener need update default certificate authority: %s", *listenerOpts.DefaultCertificateAuthority)
-	}
-
-	// update cert SNI here .......................................................
-
-	if isUpdate {
+	updateOpts := compareListenerOptions(lis, &listenerOpts)
+	if updateOpts != nil {
 		err := c.api.UpdateListener(lbID, lis.UUID, updateOpts)
 		if err != nil {
 			logrus.Error("error when update listener: ", err)

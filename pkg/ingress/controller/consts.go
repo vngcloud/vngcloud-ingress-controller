@@ -108,31 +108,6 @@ func CreatePoolOptions(ing *nwv1.Ingress) *pool.CreateOpts {
 	if ing == nil {
 		return opt
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationPoolAlgorithm]; ok {
-		switch option {
-		case string(pool.CreateOptsAlgorithmOptRoundRobin),
-			string(pool.CreateOptsAlgorithmOptLeastConn),
-			string(pool.CreateOptsAlgorithmOptSourceIP):
-			opt.Algorithm = pool.CreateOptsAlgorithmOpt(option)
-		default:
-			klog.Warningf("Invalid annotation \"%s\" value, must be one of %s, %s, %s", ServiceAnnotationPoolAlgorithm,
-				pool.CreateOptsAlgorithmOptRoundRobin,
-				pool.CreateOptsAlgorithmOptLeastConn,
-				pool.CreateOptsAlgorithmOptSourceIP)
-		}
-	}
-	if option, ok := ing.Annotations[ServiceAnnotationHealthyThreshold]; ok {
-		opt.HealthMonitor.HealthyThreshold = ParseIntAnnotation(option, ServiceAnnotationHealthyThreshold, opt.HealthMonitor.HealthyThreshold)
-	}
-	if option, ok := ing.Annotations[ServiceAnnotationMonitorUnhealthyThreshold]; ok {
-		opt.HealthMonitor.UnhealthyThreshold = ParseIntAnnotation(option, ServiceAnnotationMonitorUnhealthyThreshold, opt.HealthMonitor.UnhealthyThreshold)
-	}
-	if option, ok := ing.Annotations[ServiceAnnotationMonitorTimeout]; ok {
-		opt.HealthMonitor.Timeout = ParseIntAnnotation(option, ServiceAnnotationMonitorTimeout, opt.HealthMonitor.Timeout)
-	}
-	if option, ok := ing.Annotations[ServiceAnnotationMonitorInterval]; ok {
-		opt.HealthMonitor.Interval = ParseIntAnnotation(option, ServiceAnnotationMonitorInterval, opt.HealthMonitor.Interval)
-	}
 	if option, ok := ing.Annotations[ServiceAnnotationMonitorProtocol]; ok {
 		switch option {
 		case string(pool.CreateOptsHealthCheckProtocolOptTCP), string(pool.CreateOptsHealthCheckProtocolOptHTTP):
@@ -189,6 +164,31 @@ func CreatePoolOptions(ing *nwv1.Ingress) *pool.CreateOpts {
 				pool.CreateOptsHealthCheckProtocolOptTCP,
 				pool.CreateOptsHealthCheckProtocolOptHTTP)
 		}
+	}
+	if option, ok := ing.Annotations[ServiceAnnotationPoolAlgorithm]; ok {
+		switch option {
+		case string(pool.CreateOptsAlgorithmOptRoundRobin),
+			string(pool.CreateOptsAlgorithmOptLeastConn),
+			string(pool.CreateOptsAlgorithmOptSourceIP):
+			opt.Algorithm = pool.CreateOptsAlgorithmOpt(option)
+		default:
+			klog.Warningf("Invalid annotation \"%s\" value, must be one of %s, %s, %s", ServiceAnnotationPoolAlgorithm,
+				pool.CreateOptsAlgorithmOptRoundRobin,
+				pool.CreateOptsAlgorithmOptLeastConn,
+				pool.CreateOptsAlgorithmOptSourceIP)
+		}
+	}
+	if option, ok := ing.Annotations[ServiceAnnotationHealthyThreshold]; ok {
+		opt.HealthMonitor.HealthyThreshold = ParseIntAnnotation(option, ServiceAnnotationHealthyThreshold, opt.HealthMonitor.HealthyThreshold)
+	}
+	if option, ok := ing.Annotations[ServiceAnnotationMonitorUnhealthyThreshold]; ok {
+		opt.HealthMonitor.UnhealthyThreshold = ParseIntAnnotation(option, ServiceAnnotationMonitorUnhealthyThreshold, opt.HealthMonitor.UnhealthyThreshold)
+	}
+	if option, ok := ing.Annotations[ServiceAnnotationMonitorTimeout]; ok {
+		opt.HealthMonitor.Timeout = ParseIntAnnotation(option, ServiceAnnotationMonitorTimeout, opt.HealthMonitor.Timeout)
+	}
+	if option, ok := ing.Annotations[ServiceAnnotationMonitorInterval]; ok {
+		opt.HealthMonitor.Interval = ParseIntAnnotation(option, ServiceAnnotationMonitorInterval, opt.HealthMonitor.Interval)
 	}
 	if option, ok := ing.Annotations[ServiceAnnotationEnableStickySession]; ok {
 		switch option {

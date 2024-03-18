@@ -182,7 +182,7 @@ func (c *API) GetPool(lbID, poolID string) (*lObjects.Pool, error) {
 	opt.LoadBalancerID = lbID
 	opt.PoolID = poolID
 
-	resp, err := pool.Get(c.VLBSC, opt)
+	resp, err := pool.GetTotal(c.VLBSC, opt)
 	// logrus.Infoln("*****API__GetPool: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
@@ -478,7 +478,11 @@ func (c *API) FindPoolByName(lbID, name string) (*lObjects.Pool, error) {
 	}
 	for _, pool := range pools {
 		if pool.Name == name {
-			return pool, nil
+			ipool, err := c.GetPool(lbID, pool.UUID)
+			if err != nil {
+				return nil, err
+			}
+			return ipool, nil
 		}
 	}
 	return nil, errors.ErrNotFound

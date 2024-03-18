@@ -21,6 +21,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	lObjects "github.com/vngcloud/vngcloud-go-sdk/vngcloud/objects"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/listener"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
 	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/errors"
 	apiv1 "k8s.io/api/core/v1"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog/v2"
 )
 
 // IsValid returns true if the given Ingress either doesn't specify
@@ -165,6 +167,70 @@ func comparePoolOptions(ipool *lObjects.Pool, poolOptions *pool.CreateOpts) *poo
 		ipool.TLSEncryption != *poolOptions.TLSEncryption {
 		isNeedUpdate = true
 	}
+	if ipool.HealthMonitor.HealthyThreshold != poolOptions.HealthMonitor.HealthyThreshold ||
+		ipool.HealthMonitor.UnhealthyThreshold != poolOptions.HealthMonitor.UnhealthyThreshold ||
+		ipool.HealthMonitor.Interval != poolOptions.HealthMonitor.Interval ||
+		ipool.HealthMonitor.Timeout != poolOptions.HealthMonitor.Timeout {
+		isNeedUpdate = true
+	}
+	if ipool.HealthMonitor.HealthCheckProtocol == "HTTP" && poolOptions.HealthMonitor.HealthCheckProtocol == pool.CreateOptsHealthCheckProtocolOptHTTP {
+		// domain may return nil
+		if ipool.HealthMonitor.HealthCheckPath == nil || *ipool.HealthMonitor.HealthCheckPath != *poolOptions.HealthMonitor.HealthCheckPath ||
+			ipool.HealthMonitor.DomainName == nil || *ipool.HealthMonitor.DomainName != *poolOptions.HealthMonitor.DomainName ||
+			ipool.HealthMonitor.HttpVersion == nil || *ipool.HealthMonitor.HttpVersion != string(*poolOptions.HealthMonitor.HttpVersion) ||
+			ipool.HealthMonitor.HealthCheckMethod == nil || *ipool.HealthMonitor.HealthCheckMethod != string(*poolOptions.HealthMonitor.HealthCheckMethod) ||
+			ipool.HealthMonitor.SuccessCode == nil || *ipool.HealthMonitor.SuccessCode != *poolOptions.HealthMonitor.SuccessCode {
+			isNeedUpdate = true
+		}
+	} else if ipool.HealthMonitor.HealthCheckProtocol == "HTTP" && poolOptions.HealthMonitor.HealthCheckProtocol == pool.CreateOptsHealthCheckProtocolOptTCP {
+		updateOptions.HealthMonitor.HealthCheckProtocol = pool.CreateOptsHealthCheckProtocolOptHTTP
+		updateOptions.HealthMonitor.HealthCheckPath = ipool.HealthMonitor.HealthCheckPath
+		updateOptions.HealthMonitor.DomainName = ipool.HealthMonitor.DomainName
+		*updateOptions.HealthMonitor.HttpVersion = pool.CreateOptsHealthCheckHttpVersionOpt(*ipool.HealthMonitor.HttpVersion)
+		*updateOptions.HealthMonitor.HealthCheckMethod = pool.CreateOptsHealthCheckMethodOpt(*ipool.HealthMonitor.HealthCheckMethod)
+	} else if ipool.HealthMonitor.HealthCheckProtocol == "TCP" && poolOptions.HealthMonitor.HealthCheckProtocol == pool.CreateOptsHealthCheckProtocolOptHTTP {
+		updateOptions.HealthMonitor.HealthCheckProtocol = pool.CreateOptsHealthCheckProtocolOptTCP
+		updateOptions.HealthMonitor.HealthCheckPath = nil
+		updateOptions.HealthMonitor.DomainName = nil
+		updateOptions.HealthMonitor.HttpVersion = nil
+		updateOptions.HealthMonitor.HealthCheckMethod = nil
+	}
+
+	if !isNeedUpdate {
+		return nil
+	}
+	return updateOptions
+}
+
+func compareListenerOptions(ilis *lObjects.Listener, lisOptions *listener.CreateOpts) *listener.UpdateOpts {
+	isNeedUpdate := false
+	updateOptions := &listener.UpdateOpts{
+		AllowedCidrs:                lisOptions.AllowedCidrs,
+		TimeoutClient:               lisOptions.TimeoutClient,
+		TimeoutMember:               lisOptions.TimeoutMember,
+		TimeoutConnection:           lisOptions.TimeoutConnection,
+		DefaultPoolId:               lisOptions.DefaultPoolId,
+		DefaultCertificateAuthority: lisOptions.DefaultCertificateAuthority,
+		// Headers:                     lisOptions.Headers,
+		// ClientCertificate:           lisOptions.ClientCertificateAuthentication,
+		// ......................................... update later
+	}
+	if ilis.AllowedCidrs != lisOptions.AllowedCidrs ||
+		ilis.TimeoutClient != lisOptions.TimeoutClient ||
+		ilis.TimeoutMember != lisOptions.TimeoutMember ||
+		ilis.TimeoutConnection != lisOptions.TimeoutConnection {
+		isNeedUpdate = true
+	}
+
+	if ilis.DefaultPoolId != lisOptions.DefaultPoolId {
+		klog.Infof("listener need update default pool id: %s", lisOptions.DefaultPoolId)
+		isNeedUpdate = true
+	}
+	if lisOptions.DefaultCertificateAuthority != nil && (ilis.DefaultCertificateAuthority == nil || *(ilis.DefaultCertificateAuthority) != *(lisOptions.DefaultCertificateAuthority)) {
+		klog.Infof("listener need update default certificate authority: %s", *lisOptions.DefaultCertificateAuthority)
+		isNeedUpdate = true
+	}
+	// update cert SNI here .......................................................
 	if !isNeedUpdate {
 		return nil
 	}

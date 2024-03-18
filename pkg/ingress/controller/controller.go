@@ -473,7 +473,7 @@ func (c *Controller) getServiceNodePort(name string, serviceBackend *nwv1.Ingres
 	}
 
 	if nodePort == 0 {
-		return 0, fmt.Errorf("failed to find nodeport for service %s", name)
+		return 0, fmt.Errorf("failed to find nodeport for service %s:%s", name, portInfo.String())
 	}
 
 	logger.Debug("found service nodeport")
@@ -623,12 +623,16 @@ func (c *Controller) DeleteLoadbalancer(ing *nwv1.Ingress) error {
 
 	oldIngExpander, err := c.inspectIngress(ing)
 	if err != nil {
-		logrus.Errorln("error when inspect old ingress", err)
-		return err
+		oldIngExpander = &IngressInspect{
+			PolicyExpander:      make([]*PolicyExpander, 0),
+			PoolExpander:        make([]*PoolExpander, 0),
+			ListenerExpander:    make([]*ListenerExpander, 0),
+			CertificateExpander: make([]*CertificateExpander, 0),
+		}
 	}
 	newIngExpander, err := c.inspectIngress(nil)
 	if err != nil {
-		logrus.Errorln("error when inspect new ingress", err)
+		logrus.Errorln("error when inspect new ingress:", err)
 		return err
 	}
 
@@ -854,7 +858,7 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 
 			poolExpander, err := GetPoolExpander(path.Backend.Service)
 			if err != nil {
-				logrus.Errorln("error when get pool expander", err)
+				logrus.Errorln("error when get pool expander:", err)
 				return nil, err
 			}
 			expectPoolName = append(expectPoolName, poolExpander)
@@ -907,12 +911,16 @@ func (c *Controller) ensureCompareIngress(oldIng, ing *nwv1.Ingress) (*lObjects.
 
 	oldIngExpander, err := c.inspectIngress(oldIng)
 	if err != nil {
-		logrus.Errorln("error when inspect old ingress", err)
-		return nil, err
+		oldIngExpander = &IngressInspect{
+			PolicyExpander:      make([]*PolicyExpander, 0),
+			PoolExpander:        make([]*PoolExpander, 0),
+			ListenerExpander:    make([]*ListenerExpander, 0),
+			CertificateExpander: make([]*CertificateExpander, 0),
+		}
 	}
 	newIngExpander, err := c.inspectIngress(ing)
 	if err != nil {
-		logrus.Errorln("error when inspect new ingress", err)
+		logrus.Errorln("error when inspect new ingress:", err)
 		return nil, err
 	}
 

@@ -54,7 +54,7 @@ jobs:
         uses: super-linter/super-linter@v6.3.0
         env:
           VALIDATE_ALL_CODEBASE: false
-          DEFAULT_BRANCH: release-1.26-vngcloud-v2
+          DEFAULT_BRANCH: dev
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LINTER_RULES_PATH: "."
           MARKDOWN_CONFIG_FILE: .markdownlint.yml

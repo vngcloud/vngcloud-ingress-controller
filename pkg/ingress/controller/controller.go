@@ -75,6 +75,7 @@ type Controller struct {
 
 	SecretTrackers      *SecretTracker
 	isUpdateDefaultPool bool // it have a bug when update default pool member, set this to reapply when update pool member
+	trackLBUpdate       *UpdateTracker
 }
 
 // NewController creates a new VngCloud Ingress controller.
@@ -115,6 +116,7 @@ func NewController(conf config.Config) *Controller {
 		nodeLister:          nodeInformer.Lister(),
 		nodeListerSynced:    nodeInformer.Informer().HasSynced,
 		knownNodes:          []*apiv1.Node{},
+		trackLBUpdate:       NewUpdateTracker(),
 	}
 
 	ingInformer := kubeInformerFactory.Networking().V1().Ingresses()
@@ -257,6 +259,19 @@ func (c *Controller) nodeSyncLoop() {
 		isReApply = true
 		logrus.Infof("Detected change in secret tracker")
 	}
+
+	lbs, err := c.api.ListLBBySubnetID(c.getSubnetID())
+	if err != nil {
+		logrus.Errorf("Failed to retrieve current set of load balancers: %v", err)
+		return
+	}
+	reapplyIngress := c.trackLBUpdate.GetReapplyIngress(lbs)
+	if len(reapplyIngress) > 0 {
+		isReApply = true
+		logrus.Infof("Detected change in load balancer update tracker")
+
+	}
+
 	if !isReApply {
 		return
 	}
@@ -381,6 +396,7 @@ func (c *Controller) ensureIngress(oldIng, ing *nwv1.Ingress) error {
 	if err != nil {
 		return err
 	}
+	c.trackLBUpdate.AddUpdateTracker(lb.UUID, fmt.Sprintf("%s/%s", ing.Namespace, ing.Name), lb.UpdatedAt)
 	vip := lb.Address
 	newIng, err := c.updateIngressStatus(ing, vip)
 	if err != nil {
@@ -616,6 +632,7 @@ func (c *Controller) GetLoadbalancerIDByIngress(ing *nwv1.Ingress) (string, erro
 func (c *Controller) DeleteLoadbalancer(ing *nwv1.Ingress) error {
 	klog.Infof("----------------- DeleteLoadbalancer(%s/%s) ------------------", ing.Namespace, ing.Name)
 	lbID, err := c.GetLoadbalancerIDByIngress(ing)
+	c.trackLBUpdate.RemoveUpdateTracker(lbID, fmt.Sprintf("%s/%s", ing.Namespace, ing.Name))
 	if err != nil {
 		logrus.Errorln("error when ensure loadbalancer", err)
 		return err
@@ -1041,7 +1058,7 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 	}
 
 	// ensure default pool
-	defaultPool, err := c.ensurePoolV2(lb.UUID, &newIngExpander.defaultPool.CreateOpts)
+	defaultPool, err := c.ensurePool(lb.UUID, &newIngExpander.defaultPool.CreateOpts)
 	if err != nil {
 		logrus.Errorln("error when ensure default pool", err)
 		return nil, err
@@ -1059,7 +1076,7 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 	// ensure all from newIngExpander
 	mapPoolNameIndex := make(map[string]int)
 	for poolIndex, ipool := range newIngExpander.PoolExpander {
-		newPool, err := c.ensurePoolV2(lb.UUID, &ipool.CreateOpts)
+		newPool, err := c.ensurePool(lb.UUID, &ipool.CreateOpts)
 		if err != nil {
 			logrus.Errorln("error when ensure pool", err)
 			return nil, err
@@ -1191,8 +1208,8 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 	return lb, nil
 }
 
-func (c *Controller) ensurePoolV2(lbID string, poolOptions *pool.CreateOpts) (*lObjects.Pool, error) {
-	klog.Infof("------------ ensurePoolV2: %s", poolOptions.PoolName)
+func (c *Controller) ensurePool(lbID string, poolOptions *pool.CreateOpts) (*lObjects.Pool, error) {
+	klog.Infof("------------ ensurePool: %s", poolOptions.PoolName)
 	ipool, err := c.api.FindPoolByName(lbID, poolOptions.PoolName)
 	if err != nil {
 		if err == vErrors.ErrNotFound {

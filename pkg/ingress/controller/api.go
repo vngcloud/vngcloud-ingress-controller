@@ -148,12 +148,8 @@ func (c *API) ListPoolOfLB(lbID string) ([]*lObjects.Pool, error) {
 
 func (c *API) UpdatePoolMember(lbID, poolID string, mems []*pool.Member) error {
 	logrus.Infoln("*****API__UpdatePoolMember: ", "poolID: ", poolID, "ProjectID: ", c.ProjectID, "mems: ", mems)
-	newMems := make([]pool.Member, len(mems))
-	for i, mem := range mems {
-		newMems[i] = *mem
-	}
 	opt := &pool.UpdatePoolMembersOpts{
-		Members: newMems,
+		Members: mems,
 	}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID

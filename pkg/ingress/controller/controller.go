@@ -920,11 +920,6 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 
 func (c *Controller) ensureCompareIngress(oldIng, ing *nwv1.Ingress) (*lObjects.LoadBalancer, error) {
 	klog.Infof("----------------- ensureCompareIngress(%s/%s) ------------------", ing.Namespace, ing.Name)
-	lbID, err := c.ensureLoadBalancer(ing)
-	if err != nil {
-		logrus.Errorln("error when ensure loadbalancer", err)
-		return nil, err
-	}
 
 	oldIngExpander, err := c.inspectIngress(oldIng)
 	if err != nil {
@@ -938,6 +933,12 @@ func (c *Controller) ensureCompareIngress(oldIng, ing *nwv1.Ingress) (*lObjects.
 	newIngExpander, err := c.inspectIngress(ing)
 	if err != nil {
 		logrus.Errorln("error when inspect new ingress:", err)
+		return nil, err
+	}
+
+	lbID, err := c.ensureLoadBalancer(ing)
+	if err != nil {
+		logrus.Errorln("error when ensure loadbalancer", err)
 		return nil, err
 	}
 

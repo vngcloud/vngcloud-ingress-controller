@@ -37,3 +37,4 @@ type ErrNodeAddressNotFound struct {
 var ErrNotFound = errors.New("failed to find object")
 
 var ErrLoadBalancerIDNotFoundAnnotation = errors.New("failed to find LoadBalancerID from Annotation")
+var ErrLoadBalancerNameNotFoundAnnotation = errors.New("failed to find LoadBalancerName from Annotation")

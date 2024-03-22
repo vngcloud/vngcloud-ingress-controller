@@ -18,10 +18,12 @@ package controller
 
 import (
 	"fmt"
+	"strings"
 
 	log "github.com/sirupsen/logrus"
 	lObjects "github.com/vngcloud/vngcloud-go-sdk/vngcloud/objects"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/listener"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/policy"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
 	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/errors"
 	apiv1 "k8s.io/api/core/v1"
@@ -235,4 +237,115 @@ func compareListenerOptions(ilis *lObjects.Listener, lisOptions *listener.Create
 		return nil
 	}
 	return updateOptions
+}
+
+func comparePoolDefaultMember(memsGet []*lObjects.Member, oldMembers, newMembers []*pool.Member) ([]*pool.Member, error) {
+	memsGetConvert := ConvertObjectToPoolMemberArray(memsGet)
+	getRedundant := func(old, new []*pool.Member) []*pool.Member {
+		redundant := make([]*pool.Member, 0)
+		for _, o := range old {
+			isHave := false
+			for _, n := range new {
+				if o.IpAddress == n.IpAddress &&
+					o.MonitorPort == n.MonitorPort &&
+					o.Weight == n.Weight &&
+					o.Backup == n.Backup &&
+					// o.Name == n.Name &&
+					o.Port == n.Port {
+					isHave = true
+					break
+				}
+			}
+			if !isHave {
+				redundant = append(redundant, o)
+			}
+		}
+		return redundant
+	}
+	needDelete := getRedundant(oldMembers, newMembers)
+	needCreate := newMembers // need ensure
+
+	klog.Infof("memGets: %v", memsGet)
+	for _, m := range memsGetConvert {
+		klog.Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
+	}
+	klog.Infof("needDelete: %v", needDelete)
+	for _, m := range needDelete {
+		klog.Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
+	}
+	klog.Infof("needCreate: %v", needCreate)
+	for _, m := range needCreate {
+		klog.Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
+	}
+
+	updateMember := make([]*pool.Member, 0)
+	for _, m := range memsGetConvert {
+		// remove all member in needCreate and add later (maybe member is scale down, then redundant)
+		isAddLater := false
+		for _, nc := range needCreate {
+			if strings.HasPrefix(m.Name, nc.Name) {
+				isAddLater = true
+				break
+			}
+		}
+		if isAddLater {
+			continue
+		}
+
+		if !CheckIfPoolMemberExist(needDelete, m) {
+			updateMember = append(updateMember, m)
+		}
+	}
+	for _, m := range needCreate {
+		if !CheckIfPoolMemberExist(updateMember, m) {
+			updateMember = append(updateMember, m)
+		}
+	}
+
+	if ComparePoolMembers(updateMember, memsGetConvert) {
+		klog.Infof("no need update default pool member")
+		return nil, nil
+	}
+
+	return updateMember, nil
+}
+
+func comparePolicy(currentPolicy *lObjects.Policy, policyOpt *policy.CreateOptsBuilder) *policy.UpdateOptsBuilder {
+	comparePolicy := func(p2 *lObjects.Policy) bool {
+		if string(policyOpt.Action) != p2.Action ||
+			policyOpt.RedirectPoolID != p2.RedirectPoolID ||
+			policyOpt.Name != p2.Name {
+			return false
+		}
+		if len(policyOpt.Rules) != len(p2.L7Rules) {
+			return false
+		}
+
+		checkIfExist := func(rules []*lObjects.L7Rule, rule policy.Rule) bool {
+			for _, r := range rules {
+				if r.CompareType == string(rule.CompareType) &&
+					r.RuleType == string(rule.RuleType) &&
+					r.RuleValue == rule.RuleValue {
+					return true
+				}
+			}
+			return false
+		}
+		for _, rule := range policyOpt.Rules {
+			if !checkIfExist(p2.L7Rules, rule) {
+				klog.Infof("rule not exist: %v", rule)
+				return false
+			}
+		}
+		return true
+	}
+	if !comparePolicy(currentPolicy) {
+		updateOpts := &policy.UpdateOptsBuilder{
+			Action:         policyOpt.Action,
+			RedirectPoolID: policyOpt.RedirectPoolID,
+			Rules:          policyOpt.Rules,
+		}
+		return updateOpts
+	}
+	return nil
 }

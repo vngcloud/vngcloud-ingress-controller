@@ -2,6 +2,7 @@ package controller
 
 import (
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/objects"
+	"k8s.io/klog/v2"
 )
 
 type update struct {
@@ -51,10 +52,16 @@ func (c *UpdateTracker) RemoveUpdateTracker(lbID, ingressName string) {
 }
 
 func (c *UpdateTracker) GetReapplyIngress(lbs []*objects.LoadBalancer) []string {
+	lbNames := ""
+	for key := range c.tracker {
+		lbNames += " " + key + ","
+	}
+	klog.V(3).Infof("Watching these loadbalancers: %s", lbNames)
 	var reapplyIngress []string
 	for _, lb := range lbs {
 		if _, ok := c.tracker[lb.UUID]; ok {
 			if c.tracker[lb.UUID].updateAt != lb.UpdatedAt {
+				klog.V(3).Infof("Loadbalancer %s has been updated, sync now.", lb.UUID)
 				reapplyIngress = append(reapplyIngress, c.tracker[lb.UUID].ingress...)
 			}
 		}

@@ -521,6 +521,9 @@ func (c *API) WaitForLBActive(lbID string) *lObjects.LoadBalancer {
 			logrus.Errorln("error when get lb status: ", err)
 		} else if lb.Status == "ACTIVE" {
 			return lb
+		} else if lb.Status == "ERROR" {
+			klog.Error("LoadBalancer is in ERROR state")
+			return lb
 		}
 		logrus.Infoln("------- wait for lb active:", lb.Status, "-------")
 		time.Sleep(10 * time.Second)

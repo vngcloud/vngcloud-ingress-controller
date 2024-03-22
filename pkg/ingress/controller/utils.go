@@ -105,25 +105,32 @@ func GetResourceHashName(ing *nwv1.Ingress, clusterID string) string {
 // GetResourceName get Ingress related resource name.
 func GetResourceName(ing *nwv1.Ingress, clusterID string) string {
 	hash := GetResourceHashName(ing, clusterID)
-	return fmt.Sprintf("vks_%s_%s_%s_%s", clusterID[8:16], TrimString(ing.Namespace, 10), TrimString(ing.Name, 10), TrimString(hash, DEFAULT_HASH_NAME_LENGTH))
+	name := fmt.Sprintf("%s_%s_%s_%s_%s", DEFAULT_LB_PREFIX_NAME, clusterID[8:16], TrimString(ing.Namespace, 10), TrimString(ing.Name, 10), TrimString(hash, DEFAULT_HASH_NAME_LENGTH))
+	return validateName(name)
 }
 func GetPolicyName(prefix string, mode bool, ruleIndex, pathIndex int) string {
-	return fmt.Sprintf("vks_%s_%t_r%d_p%d", prefix, mode, ruleIndex, pathIndex)
+	name := fmt.Sprintf("%s_%s_%t_r%d_p%d", DEFAULT_LB_PREFIX_NAME, prefix, mode, ruleIndex, pathIndex)
+	return validateName(name)
 }
 func GetPoolName(prefix, serviceName string, port int) string {
-	return fmt.Sprintf("vks_%s_%s_%d", prefix, TrimString(strings.ReplaceAll(serviceName, "/", "-"), 35), port)
+	name := fmt.Sprintf("%s_%s_%s_%d", DEFAULT_LB_PREFIX_NAME, prefix, TrimString(strings.ReplaceAll(serviceName, "/", "-"), 35), port)
+	return validateName(name)
 }
 
 func GetCertificateName(clusterID, namespace, name string) string {
 	fullName := fmt.Sprintf("%s-%s-%s", clusterID, namespace, name)
 	hashName := HashString(fullName)
-	newName := fmt.Sprintf("vks-%s-%s-%s-%s-", clusterID[8:16], TrimString(namespace, 10), TrimString(name, 10), TrimString(hashName, DEFAULT_HASH_NAME_LENGTH))
+	newName := fmt.Sprintf("%s-%s-%s-%s-%s-", DEFAULT_LB_PREFIX_NAME, clusterID[8:16], TrimString(namespace, 10), TrimString(name, 10), TrimString(hashName, DEFAULT_HASH_NAME_LENGTH))
+	return validateName(newName)
+}
+
+func validateName(newName string) string {
 	for _, char := range newName {
 		if !unicode.IsLetter(char) && !unicode.IsDigit(char) && char != '-' && char != '.' {
 			newName = strings.ReplaceAll(newName, string(char), "-")
 		}
 	}
-	return newName
+	return TrimString(newName, DEFAULT_PORTAL_NAME_LENGTH)
 }
 
 func CheckIfPoolMemberExist(mems []*pool.Member, mem *pool.Member) bool {

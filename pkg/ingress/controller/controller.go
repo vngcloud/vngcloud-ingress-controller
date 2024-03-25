@@ -21,6 +21,7 @@ import (
 	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/config"
 	vErrors "github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/errors"
 	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/metadata"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/version"
 	apiv1 "k8s.io/api/core/v1"
 	nwv1 "k8s.io/api/networking/v1"
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -550,6 +551,10 @@ func (c *Controller) Init() error {
 			"error": err,
 		}).Fatal("failed to Authenticate VNGCLOUD client")
 	}
+	provider.SetUserAgent(fmt.Sprintf(
+		"vngcloud-ingress-controller/%s (ChartVersion/%s)",
+		version.Version, c.config.Metadata.ChartVersion))
+
 	c.provider = provider
 
 	vlbSC, err := vngcloud.NewServiceClient(

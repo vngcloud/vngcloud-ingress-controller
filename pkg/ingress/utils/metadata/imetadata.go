@@ -18,6 +18,7 @@ type (
 	Opts struct {
 		SearchOrder    string     `gcfg:"search-order"`    // will be configDriver
 		RequestTimeout MyDuration `gcfg:"request-timeout"` // will be 0
+		ChartVersion   string     `gcfg:"chartVersion"`   // will be 0
 	}
 
 	Metadata struct {

@@ -187,33 +187,3 @@ dist: build-cross
 
 .PHONY: bindep build clean cover work docs fmt functional lint realclean \
 	relnotes test translation version build-cross dist codeclimate
-
-
-.PHONY: annd2
-annd2:
-	rm -f vngcloud-ingress-controller
-	make vngcloud-ingress-controller
-
-	make build-local-image-vngcloud-ingress-controller
-	docker push $(REGISTRY)/vngcloud-ingress-controller:$(VERSION)
-
-.PHONY: tidy
-tidy:
-	go get github.com/vngcloud/vngcloud-go-sdk@dev
-	go mod tidy
-
-.PHONY: apply
-apply:
-	kubectl apply -f test/.example-service.yaml
-	kubectl apply -f test/.secret.yaml
-	kubectl apply -f test/.vngcloud-ingress-controller.yaml
-	kubectl delete pods -n kube-system vngcloud-ingress-controller-0
-
-.PHONY: restart
-restart:
-	kubectl delete pods -n kube-system vngcloud-ingress-controller-0
-
-checkleak:
-	docker run \
-	-v /home/annd2/Documents/vcontainer/cloud-provider-openstack:/path \
-	zricethezav/gitleaks:latest detect --source="/path" --report-path /path/gitleaks-report.json --no-git -v

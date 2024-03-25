@@ -9,11 +9,11 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/sirupsen/logrus"
 	lObjects "github.com/vngcloud/vngcloud-go-sdk/vngcloud/objects"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
 	apiv1 "k8s.io/api/core/v1"
 	nwv1 "k8s.io/api/networking/v1"
+	"k8s.io/klog/v2"
 )
 
 func EncodeToValidName(str string) string {
@@ -186,7 +186,7 @@ func ComparePoolMembers(p1, p2 []*pool.Member) bool {
 	}
 	for _, m := range p2 {
 		if !CheckIfPoolMemberExist(p1, m) {
-			logrus.Infof("member in pool not exist: %v", m)
+			klog.Infof("member in pool not exist: %v", m)
 			return false
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -76,6 +77,8 @@ type Controller struct {
 	SecretTrackers      *SecretTracker
 	isUpdateDefaultPool bool // it have a bug when update default pool member, set this to reapply when update pool member
 	trackLBUpdate       *UpdateTracker
+	mu                  sync.Mutex
+	numOfUpdatingThread int
 }
 
 // NewController creates a new VngCloud Ingress controller.
@@ -117,6 +120,7 @@ func NewController(conf config.Config) *Controller {
 		nodeListerSynced:    nodeInformer.Informer().HasSynced,
 		knownNodes:          []*apiv1.Node{},
 		trackLBUpdate:       NewUpdateTracker(),
+		numOfUpdatingThread: 0,
 	}
 
 	ingInformer := kubeInformerFactory.Networking().V1().Ingresses()
@@ -236,10 +240,26 @@ func (c *Controller) Start() {
 	<-c.stopCh
 }
 
+func (s *Controller) addUpdatingThread() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.numOfUpdatingThread++
+}
+
+func (s *Controller) removeUpdatingThread() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.numOfUpdatingThread--
+}
+
 // nodeSyncLoop handles updating the hosts pointed to by all load
 // balancers whenever the set of nodes in the cluster changes.
 func (c *Controller) nodeSyncLoop() {
 	klog.Infoln("------------ nodeSyncLoop() ------------")
+	if c.numOfUpdatingThread > 0 {
+		klog.Infof("Skip nodeSyncLoop() because the controller is in the update mode.")
+		return
+	}
 	readyWorkerNodes, err := listWithPredicate(c.nodeLister, getNodeConditionPredicate())
 	if err != nil {
 		logrus.Errorf("Failed to retrieve current set of nodes from node lister: %v", err)
@@ -257,18 +277,18 @@ func (c *Controller) nodeSyncLoop() {
 	}
 	if c.SecretTrackers.CheckSecretTrackerChange(c.kubeClient) {
 		isReApply = true
-		logrus.Infof("Detected change in secret tracker")
+		klog.Infof("Detected change in secret tracker")
 	}
 
 	lbs, err := c.api.ListLBBySubnetID(c.getSubnetID())
 	if err != nil {
-		logrus.Errorf("Failed to retrieve current set of load balancers: %v", err)
+		klog.Errorf("Failed to retrieve current set of load balancers: %v", err)
 		return
 	}
 	reapplyIngress := c.trackLBUpdate.GetReapplyIngress(lbs)
 	if len(reapplyIngress) > 0 {
 		isReApply = true
-		logrus.Infof("Detected change in load balancer update tracker")
+		klog.Infof("Detected change in load balancer update tracker")
 
 	}
 
@@ -336,8 +356,9 @@ func (c *Controller) processNextItem() bool {
 func (c *Controller) processItem(event Event) error {
 	klog.Infoln("---------------- processItem() ----------------")
 	klog.Infoln("EVENT:", event.Type)
-	// time.Sleep(90 * time.Second)
-	// return nil
+
+	c.addUpdatingThread()
+	defer c.removeUpdatingThread()
 
 	ing := event.Obj.(*nwv1.Ingress)
 	var oldIng *nwv1.Ingress
@@ -586,44 +607,44 @@ func (c *Controller) GetLoadbalancerIDByIngress(ing *nwv1.Ingress) (string, erro
 	klog.Infof("----------------- GetLoadbalancerIDByIngress(%s/%s) ------------------", ing.Namespace, ing.Name)
 	lbsInSubnet, err := c.api.ListLBBySubnetID(c.getSubnetID())
 	if err != nil {
-		logrus.Errorf("error when list lb by subnet id: %v", err)
+		klog.Errorf("error when list lb by subnet id: %v", err)
 		return "", err
 	}
 
 	// check in annotation lb id
 	if lbID, ok := ing.Annotations[ServiceAnnotationLoadBalancerID]; ok {
-		logrus.Infof("have annotation lbID: %s", lbID)
+		klog.Infof("have annotation lbID: %s", lbID)
 		for _, lb := range lbsInSubnet {
 			if lb.UUID == lbID {
-				logrus.Infof("found lbID: %s", lbID)
+				klog.Infof("found lbID: %s", lbID)
 				return lb.UUID, nil
 			}
 		}
-		logrus.Infof("have annotation but not found lbID: %s", lbID)
+		klog.Infof("have annotation but not found lbID: %s", lbID)
 		return "", vErrors.ErrLoadBalancerIDNotFoundAnnotation
 	}
 
 	// check in annotation lb name
 	if lbName, ok := ing.Annotations[ServiceAnnotationLoadBalancerName]; ok {
-		logrus.Infof("have annotation lbName: %s", lbName)
+		klog.Infof("have annotation lbName: %s", lbName)
 		for _, lb := range lbsInSubnet {
 			if lb.Name == lbName {
-				logrus.Infof("found lbName: %s", lbName)
+				klog.Infof("found lbName: %s", lbName)
 				return lb.UUID, nil
 			}
 		}
-		logrus.Infof("have annotation but not found lbName: %s", lbName)
+		klog.Errorf("have annotation but not found lbName: %s", lbName)
 		return "", vErrors.ErrLoadBalancerNameNotFoundAnnotation
 	} else {
 		// check in list lb name
 		lbName := GetResourceName(ing, c.getClusterID())
 		for _, lb := range lbsInSubnet {
 			if lb.Name == lbName {
-				logrus.Infof("Found lb match Name: %s", lbName)
+				klog.Infof("Found lb match Name: %s", lbName)
 				return lb.UUID, nil
 			}
 		}
-		logrus.Infof("Not found lb match Name: %s", lbName)
+		klog.Infof("Not found lb match Name: %s", lbName)
 	}
 
 	return "", vErrors.ErrNotFound
@@ -633,12 +654,12 @@ func (c *Controller) DeleteLoadbalancer(ing *nwv1.Ingress) error {
 	klog.Infof("----------------- DeleteLoadbalancer(%s/%s) ------------------", ing.Namespace, ing.Name)
 	lbID, err := c.GetLoadbalancerIDByIngress(ing)
 	if lbID == "" {
-		logrus.Infof("Not found lbID to delete")
+		klog.Infof("Not found lbID to delete")
 		return nil
 	}
 	c.trackLBUpdate.RemoveUpdateTracker(lbID, fmt.Sprintf("%s/%s", ing.Namespace, ing.Name))
 	if err != nil {
-		logrus.Errorln("error when ensure loadbalancer", err)
+		klog.Errorln("error when ensure loadbalancer", err)
 		return err
 	}
 
@@ -653,13 +674,13 @@ func (c *Controller) DeleteLoadbalancer(ing *nwv1.Ingress) error {
 	}
 	newIngExpander, err := c.inspectIngress(nil)
 	if err != nil {
-		logrus.Errorln("error when inspect new ingress:", err)
+		klog.Errorln("error when inspect new ingress:", err)
 		return err
 	}
 
 	_, err = c.actionCompareIngress(lbID, oldIngExpander, newIngExpander)
 	if err != nil {
-		logrus.Errorln("error when compare ingress", err)
+		klog.Errorln("error when compare ingress", err)
 		return err
 	}
 	return nil
@@ -691,7 +712,7 @@ func (c *Controller) inspectCurrentLB(lbID string) (*IngressInspect, error) {
 
 	liss, err := c.api.ListListenerOfLB(lbID)
 	if err != nil {
-		logrus.Errorln("error when list listener of lb", err)
+		klog.Errorln("error when list listener of lb", err)
 		return nil, err
 	}
 	for _, lis := range liss {
@@ -707,7 +728,7 @@ func (c *Controller) inspectCurrentLB(lbID string) (*IngressInspect, error) {
 
 	getPools, err := c.api.ListPoolOfLB(lbID)
 	if err != nil {
-		logrus.Errorln("error when list pool of lb", err)
+		klog.Errorln("error when list pool of lb", err)
 		return nil, err
 	}
 	for _, p := range getPools {
@@ -734,7 +755,7 @@ func (c *Controller) inspectCurrentLB(lbID string) (*IngressInspect, error) {
 	for _, lis := range liss {
 		pols, err := c.api.ListPolicyOfListener(lbID, lis.UUID)
 		if err != nil {
-			logrus.Errorln("error when list policy of listener", err)
+			klog.Errorln("error when list policy of listener", err)
 			return nil, err
 		}
 		for _, pol := range pols {
@@ -767,6 +788,7 @@ func (c *Controller) inspectCurrentLB(lbID string) (*IngressInspect, error) {
 func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) {
 	if ing == nil {
 		return &IngressInspect{
+			defaultPool:         nil,
 			PolicyExpander:      make([]*PolicyExpander, 0),
 			PoolExpander:        make([]*PoolExpander, 0),
 			ListenerExpander:    make([]*ListenerExpander, 0),
@@ -787,7 +809,7 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 		// check if certificate already exist
 		secret, err := c.kubeClient.CoreV1().Secrets(ing.Namespace).Get(context.TODO(), tls.SecretName, apimetav1.GetOptions{})
 		if err != nil {
-			logrus.Errorf("error when get secret: %s in ns %s: %v", tls.SecretName, ing.Namespace, err)
+			klog.Errorf("error when get secret: %s in ns %s: %v", tls.SecretName, ing.Namespace, err)
 			return nil, err
 		}
 		version := secret.ObjectMeta.ResourceVersion
@@ -846,7 +868,7 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 	if ing.Spec.DefaultBackend != nil && ing.Spec.DefaultBackend.Service != nil {
 		defaultPoolExpander, err := GetPoolExpander(ing.Spec.DefaultBackend.Service)
 		if err != nil {
-			logrus.Errorln("error when get default pool expander", err)
+			klog.Errorln("error when get default pool expander", err)
 			return nil, err
 		}
 		defaultPool.Members = defaultPoolExpander.Members
@@ -879,7 +901,7 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 
 			poolExpander, err := GetPoolExpander(path.Backend.Service)
 			if err != nil {
-				logrus.Errorln("error when get pool expander:", err)
+				klog.Errorln("error when get pool expander:", err)
 				return nil, err
 			}
 			expectPoolName = append(expectPoolName, poolExpander)
@@ -936,19 +958,19 @@ func (c *Controller) ensureCompareIngress(oldIng, ing *nwv1.Ingress) (*lObjects.
 	}
 	newIngExpander, err := c.inspectIngress(ing)
 	if err != nil {
-		logrus.Errorln("error when inspect new ingress:", err)
+		klog.Errorln("error when inspect new ingress:", err)
 		return nil, err
 	}
 
 	lbID, err := c.ensureLoadBalancer(ing)
 	if err != nil {
-		logrus.Errorln("error when ensure loadbalancer", err)
+		klog.Errorln("error when ensure loadbalancer", err)
 		return nil, err
 	}
 
 	lb, err := c.actionCompareIngress(lbID, oldIngExpander, newIngExpander)
 	if err != nil {
-		logrus.Errorln("error when compare ingress", err)
+		klog.Errorln("error when compare ingress", err)
 		return nil, err
 	}
 	return lb, nil
@@ -960,10 +982,10 @@ func (c *Controller) ensureLoadBalancer(ing *nwv1.Ingress) (string, error) {
 	if err != nil {
 		switch err {
 		case vErrors.ErrLoadBalancerIDNotFoundAnnotation:
-			logrus.Warnf("Annotation %s not found value", ServiceAnnotationLoadBalancerID)
+			klog.Warningf("Annotation %s not found value", ServiceAnnotationLoadBalancerID)
 			return "", err
 		case vErrors.ErrLoadBalancerNameNotFoundAnnotation:
-			logrus.Warnf("Annotation %s not found value", ServiceAnnotationLoadBalancerName)
+			klog.Warningf("Annotation %s not found value", ServiceAnnotationLoadBalancerName)
 			return "", err
 		case vErrors.ErrNotFound:
 			klog.Infof("--------------- create new lb for ingress %s/%s -------------------", ing.Namespace, ing.Name)
@@ -981,7 +1003,7 @@ func (c *Controller) ensureLoadBalancer(ing *nwv1.Ingress) (string, error) {
 			lbID = lb.UUID
 			c.api.WaitForLBActive(lbID)
 		default:
-			logrus.Errorln("error when get lb id by ingress", err)
+			klog.Errorln("error when get lb id by ingress", err)
 			return "", fmt.Errorf("error when ensureLoadBalancer: %v", err)
 		}
 	}
@@ -994,7 +1016,7 @@ func (c *Controller) ensureLoadBalancer(ing *nwv1.Ingress) (string, error) {
 
 	ensureAnnotation := func() {
 		if lbName, ok := ing.Annotations[ServiceAnnotationLoadBalancerName]; ok && lb.Name != lbName {
-			logrus.Warnf("Annotation %s not match, only meaning when create new load-balancer", ServiceAnnotationLoadBalancerName)
+			klog.Warningf("Annotation %s not match, only meaning when create new load-balancer", ServiceAnnotationLoadBalancerName)
 		}
 		if packageID, ok := ing.Annotations[ServiceAnnotationPackageID]; ok && lb.PackageID != packageID {
 			klog.Info("Resize load-balancer package to match annotation: ", packageID)
@@ -1006,7 +1028,7 @@ func (c *Controller) ensureLoadBalancer(ing *nwv1.Ingress) (string, error) {
 			c.api.WaitForLBActive(lbID)
 		}
 		if option, ok := ing.Annotations[ServiceAnnotationLoadBalancerInternal]; ok && lb.Internal != (option == "true") {
-			logrus.Warnf("Annotation %s not match, only meaning when create new load-balancer", ServiceAnnotationLoadBalancerInternal)
+			klog.Warningf("Annotation %s not match, only meaning when create new load-balancer", ServiceAnnotationLoadBalancerInternal)
 		}
 	}
 	ensureAnnotation()
@@ -1018,7 +1040,7 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 
 	curLBExpander, err := c.inspectCurrentLB(lbID)
 	if err != nil {
-		logrus.Errorln("error when inspect current lb", err)
+		klog.Errorln("error when inspect current lb", err)
 		return nil, err
 	}
 
@@ -1045,12 +1067,12 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 			}
 			importOpts, err := c.toVngCloudCertificate(cert.SecretName, ing.namespace, cert.Name+cert.Version)
 			if err != nil {
-				logrus.Errorln("error when toVngCloudCertificate", err)
+				klog.Errorln("error when toVngCloudCertificate", err)
 				return err
 			}
 			newCert, err := c.api.ImportCertificate(importOpts)
 			if err != nil {
-				logrus.Errorln("error when import certificate", err)
+				klog.Errorln("error when import certificate", err)
 				return err
 			}
 			cert.UUID = newCert.UUID
@@ -1059,39 +1081,44 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 	}
 	err = EnsureCertificate(newIngExpander)
 	if err != nil {
-		logrus.Errorln("error when ensure certificate", err)
+		klog.Errorln("error when ensure certificate", err)
 		return nil, err
 	}
 
-	// ensure default pool
-	defaultPool, err := c.ensurePool(lb.UUID, &newIngExpander.defaultPool.CreateOpts)
-	if err != nil {
-		logrus.Errorln("error when ensure default pool", err)
-		return nil, err
+	var defaultPool *lObjects.Pool
+	if newIngExpander.defaultPool != nil {
+		// ensure default pool
+		defaultPool, err = c.ensurePool(lb.UUID, &newIngExpander.defaultPool.CreateOpts)
+		if err != nil {
+			klog.Errorln("error when ensure default pool", err)
+			return nil, err
+		}
+
+		// ensure default pool member
+		if oldIngExpander != nil && oldIngExpander.defaultPool != nil && oldIngExpander.defaultPool.Members != nil {
+			_, err = c.ensureDefaultPoolMember(lb.UUID, defaultPool.UUID, oldIngExpander.defaultPool.Members, newIngExpander.defaultPool.Members)
+		} else {
+			_, err = c.ensureDefaultPoolMember(lb.UUID, defaultPool.UUID, nil, newIngExpander.defaultPool.Members)
+		}
+		if err != nil {
+			klog.Errorln("error when ensure default pool member", err)
+			return nil, err
+		}
 	}
-	// ensure default pool member
-	if oldIngExpander != nil && oldIngExpander.defaultPool != nil && oldIngExpander.defaultPool.Members != nil {
-		_, err = c.ensureDefaultPoolMember(lb.UUID, defaultPool.UUID, oldIngExpander.defaultPool.Members, newIngExpander.defaultPool.Members)
-	} else {
-		_, err = c.ensureDefaultPoolMember(lb.UUID, defaultPool.UUID, nil, newIngExpander.defaultPool.Members)
-	}
-	if err != nil {
-		logrus.Errorln("error when ensure default pool member", err)
-		return nil, err
-	}
+
 	// ensure all from newIngExpander
 	mapPoolNameIndex := make(map[string]int)
 	for poolIndex, ipool := range newIngExpander.PoolExpander {
 		newPool, err := c.ensurePool(lb.UUID, &ipool.CreateOpts)
 		if err != nil {
-			logrus.Errorln("error when ensure pool", err)
+			klog.Errorln("error when ensure pool", err)
 			return nil, err
 		}
 		ipool.UUID = newPool.UUID
 		mapPoolNameIndex[ipool.PoolName] = poolIndex
 		_, err = c.ensurePoolMember(lb.UUID, newPool.UUID, ipool.Members)
 		if err != nil {
-			logrus.Errorln("error when ensure pool member", err)
+			klog.Errorln("error when ensure pool member", err)
 			return nil, err
 		}
 	}
@@ -1113,7 +1140,7 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 		}
 		lis, err := c.ensureListener(lb.UUID, ilistener.CreateOpts.ListenerName, ilistener.CreateOpts)
 		if err != nil {
-			logrus.Errorln("error when ensure listener:", ilistener.CreateOpts.ListenerName, err)
+			klog.Errorln("error when ensure listener:", ilistener.CreateOpts.ListenerName, err)
 			return nil, err
 		}
 		ilistener.UUID = lis.UUID
@@ -1124,7 +1151,7 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 		// get pool name from redirect pool name
 		poolIndex, isHave := mapPoolNameIndex[ipolicy.RedirectPoolName]
 		if !isHave {
-			logrus.Errorf(".........pool not found in policy: %v", ipolicy.RedirectPoolName)
+			klog.Errorf("pool not found in policy: %v", ipolicy.RedirectPoolName)
 			return nil, err
 		}
 		poolID := newIngExpander.PoolExpander[poolIndex].UUID
@@ -1134,12 +1161,12 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 		}
 		listenerIndex, isHave := mapListenerNameIndex[listenerName]
 		if !isHave {
-			logrus.Errorf("listener index not found: %v", listenerName)
+			klog.Errorf("listener index not found: %v", listenerName)
 			return nil, err
 		}
 		listenerID := newIngExpander.ListenerExpander[listenerIndex].UUID
 		if listenerID == "" {
-			logrus.Errorf("listenerID not found: %v", listenerName)
+			klog.Errorf("listenerID not found: %v", listenerName)
 			return nil, err
 		}
 
@@ -1151,7 +1178,7 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 		}
 		_, err := c.ensurePolicy(lb.UUID, listenerID, ipolicy.Name, policyOpts)
 		if err != nil {
-			logrus.Errorln("error when ensure policy", err)
+			klog.Errorln("error when ensure policy", err)
 			return nil, err
 		}
 	}
@@ -1166,10 +1193,10 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 	for _, oldIngPolicy := range oldIngExpander.PolicyExpander {
 		_, isPolicyWillUse := policyWillUse[oldIngPolicy.Name]
 		if !isPolicyWillUse {
-			logrus.Warnf("policy not in use: %v, delete", oldIngPolicy.Name)
+			klog.Warningf("policy not in use: %v, delete", oldIngPolicy.Name)
 			_, err := c.deletePolicy(lb.UUID, oldIngPolicy.listenerID, oldIngPolicy.Name)
 			if err != nil {
-				logrus.Errorln("error when ensure policy", err)
+				klog.Errorln("error when ensure policy", err)
 				// maybe it's already deleted
 				// return nil, err
 			}
@@ -1183,15 +1210,15 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 	for _, oldIngPool := range oldIngExpander.PoolExpander {
 		_, isPoolWillUse := poolWillUse[oldIngPool.PoolName]
 		if !isPoolWillUse && oldIngPool.PoolName != DEFAULT_NAME_DEFAULT_POOL {
-			logrus.Warnf("pool not in use: %v, delete", oldIngPool.PoolName)
+			klog.Warningf("pool not in use: %v, delete", oldIngPool.PoolName)
 			_, err := c.deletePool(lb.UUID, oldIngPool.PoolName)
 			if err != nil {
-				logrus.Errorln("error when ensure pool", err)
+				klog.Errorln("error when ensure pool", err)
 				// maybe it's already deleted
 				// return nil, err
 			}
 		} else {
-			logrus.Infof("pool in use: %v, not delete", oldIngPool.PoolName)
+			klog.Infof("pool in use: %v, not delete", oldIngPool.PoolName)
 		}
 	}
 
@@ -1203,7 +1230,7 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 				if strings.HasPrefix(lc.Name, cert.Name) && !lc.InUse {
 					err := c.api.DeleteCertificate(lc.UUID)
 					if err != nil {
-						logrus.Errorln("error when delete certificate:", lc.UUID, err)
+						klog.Errorln("error when delete certificate:", lc.UUID, err)
 					}
 				}
 			}
@@ -1221,17 +1248,17 @@ func (c *Controller) ensurePool(lbID string, poolOptions *pool.CreateOpts) (*lOb
 		if err == vErrors.ErrNotFound {
 			_, err := c.api.CreatePool(lbID, poolOptions)
 			if err != nil {
-				logrus.Errorln("error when create new pool", err)
+				klog.Errorln("error when create new pool", err)
 				return nil, err
 			}
 			c.api.WaitForLBActive(lbID)
 			ipool, err = c.api.FindPoolByName(lbID, poolOptions.PoolName)
 			if err != nil {
-				logrus.Errorln("error when find pool", err)
+				klog.Errorln("error when find pool", err)
 				return nil, err
 			}
 		} else {
-			logrus.Errorln("error when find pool", err)
+			klog.Errorln("error when find pool", err)
 			return nil, err
 		}
 	}
@@ -1240,7 +1267,7 @@ func (c *Controller) ensurePool(lbID string, poolOptions *pool.CreateOpts) (*lOb
 	if updateOptions != nil {
 		err := c.api.UpdatePool(lbID, ipool.UUID, updateOptions)
 		if err != nil {
-			logrus.Errorln("error when update pool", err)
+			klog.Errorln("error when update pool", err)
 			return nil, err
 		}
 	}
@@ -1252,21 +1279,21 @@ func (c *Controller) deletePool(lbID, poolName string) (*lObjects.Pool, error) {
 	pool, err := c.api.FindPoolByName(lbID, poolName)
 	if err != nil {
 		if err == vErrors.ErrNotFound {
-			logrus.Infof("pool not found: %s, maybe deleted", poolName)
+			klog.Infof("pool not found: %s, maybe deleted", poolName)
 			return nil, nil
 		} else {
-			logrus.Errorln("error when find pool", err)
+			klog.Errorln("error when find pool", err)
 			return nil, err
 		}
 	}
 
 	if pool.Name == DEFAULT_NAME_DEFAULT_POOL {
-		logrus.Info("pool is default pool, not delete")
+		klog.Info("pool is default pool, not delete")
 		return nil, nil
 	}
 	err = c.api.DeletePool(lbID, pool.UUID)
 	if err != nil {
-		logrus.Errorln("error when delete pool", err)
+		klog.Errorln("error when delete pool", err)
 		return nil, err
 	}
 
@@ -1278,19 +1305,19 @@ func (c *Controller) ensureDefaultPoolMember(lbID, poolID string, oldMembers, ne
 	klog.Infof("------------ ensureDefaultPoolMember: %s", poolID)
 	memsGet, err := c.api.GetMemberPool(lbID, poolID)
 	if err != nil {
-		logrus.Errorln("error when get pool members", err)
+		klog.Errorln("error when get pool members", err)
 		return nil, err
 	}
 	updateMember, err := comparePoolDefaultMember(memsGet, oldMembers, newMembers)
 	if err != nil {
-		logrus.Errorln("error when compare pool members:", err)
+		klog.Errorln("error when compare pool members:", err)
 		return nil, err
 	}
 	if updateMember != nil {
 		c.isUpdateDefaultPool = true
 		err = c.api.UpdatePoolMember(lbID, poolID, updateMember)
 		if err != nil {
-			logrus.Errorln("error when update pool members", err)
+			klog.Errorln("error when update pool members", err)
 			return nil, err
 		}
 		c.api.WaitForLBActive(lbID)
@@ -1304,13 +1331,13 @@ func (c *Controller) ensurePoolMember(lbID, poolID string, members []*pool.Membe
 	memsGet, err := c.api.GetMemberPool(lbID, poolID)
 	memsGetConvert := ConvertObjectToPoolMemberArray(memsGet)
 	if err != nil {
-		logrus.Errorln("error when get pool members", err)
+		klog.Errorln("error when get pool members", err)
 		return nil, err
 	}
 	if !ComparePoolMembers(members, memsGetConvert) {
 		err := c.api.UpdatePoolMember(lbID, poolID, members)
 		if err != nil {
-			logrus.Errorln("error when update pool members", err)
+			klog.Errorln("error when update pool members", err)
 			return nil, err
 		}
 	}
@@ -1327,17 +1354,17 @@ func (c *Controller) ensureListener(lbID, lisName string, listenerOpts listener.
 			listenerOpts.ListenerName = lisName
 			_, err := c.api.CreateListener(lbID, &listenerOpts)
 			if err != nil {
-				logrus.Errorln("error when create listener", err)
+				klog.Errorln("error when create listener", err)
 				return nil, err
 			}
 			c.api.WaitForLBActive(lbID)
 			lis, err = c.api.FindListenerByPort(lbID, listenerOpts.ListenerProtocolPort)
 			if err != nil {
-				logrus.Errorln("error when find listener", err)
+				klog.Errorln("error when find listener", err)
 				return nil, err
 			}
 		} else {
-			logrus.Errorln("error when find listener", err)
+			klog.Errorln("error when find listener", err)
 			return nil, err
 		}
 	}
@@ -1346,7 +1373,7 @@ func (c *Controller) ensureListener(lbID, lisName string, listenerOpts listener.
 	if updateOpts != nil {
 		err := c.api.UpdateListener(lbID, lis.UUID, updateOpts)
 		if err != nil {
-			logrus.Error("error when update listener: ", err)
+			klog.Error("error when update listener: ", err)
 			return nil, err
 		}
 	}
@@ -1362,27 +1389,27 @@ func (c *Controller) ensurePolicy(lbID, listenerID, policyName string, policyOpt
 		if err == vErrors.ErrNotFound {
 			newPolicy, err := c.api.CreatePolicy(lbID, listenerID, policyOpt)
 			if err != nil {
-				logrus.Errorln("error when create policy", err)
+				klog.Errorln("error when create policy", err)
 				return nil, err
 			}
 			pol = newPolicy
 			c.api.WaitForLBActive(lbID)
 		} else {
-			logrus.Errorln("error when find policy", err)
+			klog.Errorln("error when find policy", err)
 			return nil, err
 		}
 	}
 	// get policy and update policy
 	newpolicy, err := c.api.GetPolicy(lbID, listenerID, pol.UUID)
 	if err != nil {
-		logrus.Errorln("error when get policy", err)
+		klog.Errorln("error when get policy", err)
 		return nil, err
 	}
 	updateOpts := comparePolicy(newpolicy, policyOpt)
 	if updateOpts != nil {
 		err := c.api.UpdatePolicy(lbID, listenerID, pol.UUID, updateOpts)
 		if err != nil {
-			logrus.Errorln("error when update policy", err)
+			klog.Errorln("error when update policy", err)
 			return nil, err
 		}
 		c.api.WaitForLBActive(lbID)
@@ -1395,16 +1422,16 @@ func (c *Controller) deletePolicy(lbID, listenerID, policyName string) (*lObject
 	pol, err := c.api.FindPolicyByName(lbID, listenerID, policyName)
 	if err != nil {
 		if err == vErrors.ErrNotFound {
-			logrus.Infof("policy not found: %s, maybe deleted", policyName)
+			klog.Infof("policy not found: %s, maybe deleted", policyName)
 			return nil, nil
 		} else {
-			logrus.Errorln("error when find policy", err)
+			klog.Errorln("error when find policy", err)
 			return nil, err
 		}
 	}
 	err = c.api.DeletePolicy(lbID, listenerID, pol.UUID)
 	if err != nil {
-		logrus.Errorln("error when delete policy", err)
+		klog.Errorln("error when delete policy", err)
 		return nil, err
 	}
 	c.api.WaitForLBActive(lbID)
@@ -1426,7 +1453,7 @@ func (c *Controller) getSubnetID() string {
 func (c *Controller) toVngCloudCertificate(secretName string, namespace string, generateName string) (*certificates.ImportOpts, error) {
 	secret, err := c.kubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, apimetav1.GetOptions{})
 	if err != nil {
-		logrus.Errorln("error when get secret", err)
+		klog.Errorln("error when get secret", err)
 		return nil, err
 	}
 

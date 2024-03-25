@@ -2,10 +2,11 @@ package controller
 
 import (
 	"fmt"
-	"github.com/sirupsen/logrus"
+
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/listener"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/policy"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
+	"k8s.io/klog/v2"
 )
 
 type PoolExpander struct {
@@ -74,7 +75,7 @@ func MapIDExpander(old, cur *IngressInspect) {
 			oldPol.UUID = cur.PolicyExpander[curIndex].UUID
 			oldPol.listenerID = cur.PolicyExpander[curIndex].listenerID
 		} else {
-			logrus.Errorf("policy not found when map ingress: %v", oldPol)
+			klog.Errorf("policy not found when map ingress: %v", oldPol)
 		}
 	}
 
@@ -87,7 +88,7 @@ func MapIDExpander(old, cur *IngressInspect) {
 		if curIndex, ok := mapPoolIndex[oldPol.PoolName]; ok {
 			oldPol.UUID = cur.PoolExpander[curIndex].UUID
 		} else {
-			logrus.Errorf("pool not found when map ingress: %v", oldPol)
+			klog.Errorf("pool not found when map ingress: %v", oldPol)
 		}
 	}
 
@@ -100,7 +101,7 @@ func MapIDExpander(old, cur *IngressInspect) {
 		if curIndex, ok := mapListenerIndex[oldPol.CreateOpts.ListenerName]; ok {
 			oldPol.UUID = cur.ListenerExpander[curIndex].UUID
 		} else {
-			logrus.Errorf("listener not found when map ingress: %v", oldPol)
+			klog.Errorf("listener not found when map ingress: %v", oldPol)
 		}
 	}
 }

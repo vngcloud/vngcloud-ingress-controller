@@ -3,9 +3,9 @@ package controller
 import (
 	"context"
 
-	"github.com/sirupsen/logrus"
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 )
 
 type secret struct {
@@ -59,12 +59,12 @@ func (c *SecretTracker) CheckSecretTrackerChange(kubeClient kubernetes.Interface
 		// check if certificate already exist
 		secret, err := kubeClient.CoreV1().Secrets(st.namespace).Get(context.TODO(), st.name, apimetav1.GetOptions{})
 		if err != nil {
-			logrus.Errorf("error when get secret in CheckSecretTrackerChange()")
+			klog.Errorf("error when get secret in CheckSecretTrackerChange()")
 			return true
 		}
 		version := secret.ObjectMeta.ResourceVersion
 		if version != st.version {
-			logrus.Infoln("CheckSecretTrackerChange: ", st.namespace, st.name, st.uuid, st.version, version)
+			klog.Infoln("CheckSecretTrackerChange: ", st.namespace, st.name, st.uuid, st.version, version)
 			return true
 		}
 	}

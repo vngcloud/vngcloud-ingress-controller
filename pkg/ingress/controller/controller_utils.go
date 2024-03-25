@@ -267,15 +267,15 @@ func comparePoolDefaultMember(memsGet []*lObjects.Member, oldMembers, newMembers
 
 	klog.Infof("memGets: %v", memsGet)
 	for _, m := range memsGetConvert {
-		klog.Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
+		klog.V(5).Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
 	}
 	klog.Infof("needDelete: %v", needDelete)
 	for _, m := range needDelete {
-		klog.Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
+		klog.V(5).Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
 	}
 	klog.Infof("needCreate: %v", needCreate)
 	for _, m := range needCreate {
-		klog.Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
+		klog.V(5).Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
 	}
 
 	updateMember := make([]*pool.Member, 0)

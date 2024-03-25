@@ -52,18 +52,28 @@ func (c *UpdateTracker) RemoveUpdateTracker(lbID, ingressName string) {
 }
 
 func (c *UpdateTracker) GetReapplyIngress(lbs []*objects.LoadBalancer) []string {
-	lbNames := ""
+	isCheck := make(map[string]bool)
+	lbIDs := ""
 	for key := range c.tracker {
-		lbNames += " " + key + ","
+		lbIDs += " " + key + ","
+		isCheck[key] = false
 	}
-	klog.V(3).Infof("Watching these loadbalancers: %s", lbNames)
+	klog.V(3).Infof("Watching these loadbalancers: %s", lbIDs)
 	var reapplyIngress []string
 	for _, lb := range lbs {
 		if _, ok := c.tracker[lb.UUID]; ok {
+			isCheck[lb.UUID] = true
 			if c.tracker[lb.UUID].updateAt != lb.UpdatedAt {
 				klog.V(3).Infof("Loadbalancer %s has been updated, sync now.", lb.UUID)
 				reapplyIngress = append(reapplyIngress, c.tracker[lb.UUID].ingress...)
 			}
+		}
+	}
+	for key, value := range isCheck {
+		if !value {
+			klog.V(3).Infof("Loadbalancer %s has been deleted, sync now.", key)
+			reapplyIngress = append(reapplyIngress, c.tracker[key].ingress...)
+			delete(c.tracker, key)
 		}
 	}
 	return reapplyIngress

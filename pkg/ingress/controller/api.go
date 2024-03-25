@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/coe/v2/cluster"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/certificates"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/listener"
@@ -27,50 +26,50 @@ type API struct {
 
 // COMMON
 func (c *API) GetClusterInfo(clusterID string) (*lObjects.Cluster, error) {
-	// logrus.Infoln("*****API__GetClusterInfo: ", "clusterID: ", clusterID, "ProjectID: ", c.ProjectID)
+	// klog.V(5).Infoln("*****API__GetClusterInfo: ", "clusterID: ", clusterID)
 	opts := &cluster.GetOpts{}
 	opts.ProjectID = c.ProjectID
 	opts.ClusterID = clusterID
 
 	resp, err := cluster.Get(c.VServerSC, opts)
-	// logrus.Infoln("*****API__GetClusterInfo: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("*****API__GetClusterInfo: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 // LB
 func (c *API) ListLBBySubnetID(subnetID string) ([]*lObjects.LoadBalancer, error) {
-	// logrus.Infoln("*****API__ListLBBySubnetID: ", "subnetID: ", subnetID, "ProjectID: ", c.ProjectID)
+	// klog.V(5).Infoln("*****API__ListLBBySubnetID: ", "subnetID: ", subnetID)
 	opt := &loadbalancer.ListBySubnetIDOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.SubnetID = subnetID
 
 	resp, err := loadbalancer.ListBySubnetID(c.VLBSC, opt)
-	// logrus.Infoln("*****API__ListLBBySubnetID: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("*****API__ListLBBySubnetID: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) GetLB(lbID string) (*lObjects.LoadBalancer, error) {
-	// logrus.Infoln("*****API__GetLB: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID)
+	// klog.V(5).Infoln("*****API__GetLB: ", "lbID: ", lbID)
 	opt := &loadbalancer.GetOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 
 	resp, err := loadbalancer.Get(c.VLBSC, opt)
-	// logrus.Infoln("*****API__GetLB: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("*****API__GetLB: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) CreateLB(lbOptions *loadbalancer.CreateOpts) (*lObjects.LoadBalancer, error) {
-	logrus.Infoln("*****API__CreateLB: ", "name: ", lbOptions.Name, "packageID: ", lbOptions.PackageID, "scheme: ", lbOptions.Scheme, "subnetID: ", lbOptions.SubnetID, "type: ", lbOptions.Type)
+	klog.V(5).Infoln("*****API__CreateLB: ", "name: ", lbOptions.Name, "packageID: ", lbOptions.PackageID, "scheme: ", lbOptions.Scheme, "subnetID: ", lbOptions.SubnetID, "type: ", lbOptions.Type)
 	lbOptions.ProjectID = c.ProjectID
 
 	resp, err := loadbalancer.Create(c.VLBSC, lbOptions)
-	logrus.Infoln("*****API__CreateLB: ", "resp: ", resp, "err: ", err)
+	klog.V(5).Infoln("*****API__CreateLB: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) DeleteLB(lbID string) error {
-	logrus.Infoln("*****API__DeleteLB: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID)
+	klog.V(5).Infoln("*****API__DeleteLB: ", "lbID: ", lbID)
 	opt := &loadbalancer.DeleteOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
@@ -79,7 +78,7 @@ func (c *API) DeleteLB(lbID string) error {
 	for {
 		err = loadbalancer.Delete(c.VLBSC, opt)
 		if err != nil && IsLoadBalancerNotReady(err) {
-			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			klog.V(5).Infof("LoadBalancerNotReady, retry after 5 seconds")
 			time.Sleep(5 * time.Second)
 			continue
 		} else {
@@ -87,12 +86,12 @@ func (c *API) DeleteLB(lbID string) error {
 		}
 	}
 
-	logrus.Infoln("*****API__DeleteLB: ", "err: ", err)
+	klog.V(5).Infoln("*****API__DeleteLB: ", "err: ", err)
 	return err
 }
 
 func (c *API) ResizeLB(lbID, packageID string) error {
-	logrus.Infoln("*****API__ResizeLB: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID, "packageID: ", packageID)
+	klog.V(5).Infoln("*****API__ResizeLB: ", "lbID: ", lbID, "packageID: ", packageID)
 	opt := &loadbalancer.UpdateOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
@@ -102,20 +101,20 @@ func (c *API) ResizeLB(lbID, packageID string) error {
 	for {
 		_, err = loadbalancer.Update(c.VLBSC, opt)
 		if err != nil && IsLoadBalancerNotReady(err) {
-			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			klog.V(5).Infof("LoadBalancerNotReady, retry after 5 seconds")
 			time.Sleep(5 * time.Second)
 			continue
 		} else {
 			break
 		}
 	}
-	logrus.Infoln("*****API__ResizeLB: ", "err: ", err)
+	klog.V(5).Infoln("*****API__ResizeLB: ", "err: ", err)
 	return err
 }
 
 // POOL
 func (c *API) CreatePool(lbID string, opt *pool.CreateOpts) (*lObjects.Pool, error) {
-	logrus.Infoln("*****API__CreatePool: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID)
+	klog.V(5).Infoln("*****API__CreatePool: ", "lbID: ", lbID)
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 
@@ -124,30 +123,30 @@ func (c *API) CreatePool(lbID string, opt *pool.CreateOpts) (*lObjects.Pool, err
 	for {
 		resp, err = pool.Create(c.VLBSC, opt)
 		if err != nil && IsLoadBalancerNotReady(err) {
-			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			klog.V(5).Infof("LoadBalancerNotReady, retry after 5 seconds")
 			time.Sleep(5 * time.Second)
 			continue
 		} else {
 			break
 		}
 	}
-	logrus.Infoln("*****API__CreatePool: ", "resp: ", resp, "err: ", err)
+	klog.V(5).Infoln("*****API__CreatePool: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) ListPoolOfLB(lbID string) ([]*lObjects.Pool, error) {
-	// logrus.Infoln("*****API__ListPool: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID)
+	// klog.V(5).Infoln("*****API__ListPool: ", "lbID: ", lbID)
 	opt := &pool.ListPoolsBasedLoadBalancerOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 
 	resp, err := pool.ListPoolsBasedLoadBalancer(c.VLBSC, opt)
-	// logrus.Infoln("*****API__ListPool: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("*****API__ListPool: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) UpdatePoolMember(lbID, poolID string, mems []*pool.Member) error {
-	logrus.Infoln("*****API__UpdatePoolMember: ", "poolID: ", poolID, "ProjectID: ", c.ProjectID, "mems: ", mems)
+	klog.V(5).Infoln("*****API__UpdatePoolMember: ", "poolID: ", poolID, "mems: ", mems)
 	opt := &pool.UpdatePoolMembersOpts{
 		Members: mems,
 	}
@@ -159,7 +158,7 @@ func (c *API) UpdatePoolMember(lbID, poolID string, mems []*pool.Member) error {
 	for {
 		err = pool.UpdatePoolMembers(c.VLBSC, opt)
 		if err != nil && IsLoadBalancerNotReady(err) {
-			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			klog.V(5).Infof("LoadBalancerNotReady, retry after 5 seconds")
 			time.Sleep(5 * time.Second)
 			continue
 		} else {
@@ -167,36 +166,36 @@ func (c *API) UpdatePoolMember(lbID, poolID string, mems []*pool.Member) error {
 		}
 	}
 
-	logrus.Infoln("*****API__UpdatePoolMember: ", "err: ", err)
+	klog.V(5).Infoln("*****API__UpdatePoolMember: ", "err: ", err)
 	return err
 }
 
 func (c *API) GetPool(lbID, poolID string) (*lObjects.Pool, error) {
-	// logrus.Infoln("*****API__GetPool: ", "poolID: ", poolID, "ProjectID: ", c.ProjectID)
+	// klog.V(5).Infoln("*****API__GetPool: ", "poolID: ", poolID)
 	opt := &pool.GetOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.PoolID = poolID
 
 	resp, err := pool.GetTotal(c.VLBSC, opt)
-	// logrus.Infoln("*****API__GetPool: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("*****API__GetPool: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) GetMemberPool(lbID, poolID string) ([]*lObjects.Member, error) {
-	// logrus.Infoln("*****API__GetMemberPool: ", "poolID: ", poolID, "ProjectID: ", c.ProjectID)
+	// klog.V(5).Infoln("*****API__GetMemberPool: ", "poolID: ", poolID)
 	opt := &pool.GetMemberOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.PoolID = poolID
 
 	resp, err := pool.GetMember(c.VLBSC, opt)
-	// logrus.Infoln("*****API__GetMemberPool: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("*****API__GetMemberPool: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) DeletePool(lbID, poolID string) error {
-	logrus.Infoln("*****API__DeletePool: ", "poolID: ", poolID, "ProjectID: ", c.ProjectID)
+	klog.V(5).Infoln("*****API__DeletePool: ", "poolID: ", poolID)
 	opt := &pool.DeleteOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
@@ -206,20 +205,20 @@ func (c *API) DeletePool(lbID, poolID string) error {
 	for {
 		err = pool.Delete(c.VLBSC, opt)
 		if err != nil && IsLoadBalancerNotReady(err) {
-			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			klog.V(5).Infof("LoadBalancerNotReady, retry after 5 seconds")
 			time.Sleep(5 * time.Second)
 			continue
 		} else {
 			break
 		}
 	}
-	logrus.Infoln("*****API__DeletePool: ", "err: ", err)
+	klog.V(5).Infoln("*****API__DeletePool: ", "err: ", err)
 	return err
 }
 
 func (c *API) UpdatePool(lbID, poolID string, opt *pool.UpdateOpts) error {
-	logrus.Infoln("*****API__UpdatePool: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID, "poolID: ", poolID)
-	logrus.Infoln("*****API__UpdatePool: ", "opt: ", opt)
+	klog.V(5).Infoln("*****API__UpdatePool: ", "lbID: ", lbID, "poolID: ", poolID)
+	klog.V(5).Infoln("*****API__UpdatePool: ", "opt: ", opt)
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.PoolID = poolID
@@ -228,20 +227,20 @@ func (c *API) UpdatePool(lbID, poolID string, opt *pool.UpdateOpts) error {
 	for {
 		err = pool.Update(c.VLBSC, opt)
 		if err != nil && IsLoadBalancerNotReady(err) {
-			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			klog.V(5).Infof("LoadBalancerNotReady, retry after 5 seconds")
 			time.Sleep(5 * time.Second)
 			continue
 		} else {
 			break
 		}
 	}
-	logrus.Infoln("*****API__UpdatePool: ", "err: ", err)
+	klog.V(5).Infoln("*****API__UpdatePool: ", "err: ", err)
 	return err
 }
 
 // LISTENER
 func (c *API) CreateListener(lbID string, opt *listener.CreateOpts) (*lObjects.Listener, error) {
-	logrus.Infoln("*****API__CreateListener: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID)
+	klog.V(5).Infoln("*****API__CreateListener: ", "lbID: ", lbID)
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 
@@ -250,29 +249,29 @@ func (c *API) CreateListener(lbID string, opt *listener.CreateOpts) (*lObjects.L
 	for {
 		resp, err = listener.Create(c.VLBSC, opt)
 		if err != nil && IsLoadBalancerNotReady(err) {
-			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			klog.V(5).Infof("LoadBalancerNotReady, retry after 5 seconds")
 			time.Sleep(5 * time.Second)
 			continue
 		} else {
 			break
 		}
 	}
-	logrus.Infoln("*****API__CreateListener: ", "resp: ", resp, "err: ", err)
+	klog.V(5).Infoln("*****API__CreateListener: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) ListListenerOfLB(lbID string) ([]*lObjects.Listener, error) {
-	// logrus.Infoln("*****API__ListListenerOfLB: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID)
+	// klog.V(5).Infoln("*****API__ListListenerOfLB: ", "lbID: ", lbID)
 	opt := &listener.GetBasedLoadBalancerOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	resp, err := listener.GetBasedLoadBalancer(c.VLBSC, opt)
-	// logrus.Infoln("*****API__ListListenerOfLB: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("*****API__ListListenerOfLB: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) DeleteListener(lbID, listenerID string) error {
-	logrus.Infoln("*****API__DeleteListener: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID, "listenerID: ", listenerID)
+	klog.V(5).Infoln("*****API__DeleteListener: ", "lbID: ", lbID, "listenerID: ", listenerID)
 	opt := &listener.DeleteOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
@@ -282,20 +281,20 @@ func (c *API) DeleteListener(lbID, listenerID string) error {
 	for {
 		err = listener.Delete(c.VLBSC, opt)
 		if err != nil && IsLoadBalancerNotReady(err) {
-			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			klog.V(5).Infof("LoadBalancerNotReady, retry after 5 seconds")
 			time.Sleep(5 * time.Second)
 			continue
 		} else {
 			break
 		}
 	}
-	logrus.Infoln("*****API__DeleteListener: ", "err: ", err)
+	klog.V(5).Infoln("*****API__DeleteListener: ", "err: ", err)
 	return err
 }
 
 func (c *API) UpdateListener(lbID, listenerID string, opt *listener.UpdateOpts) error {
-	logrus.Infoln("*****API__UpdateListener: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID, "listenerID: ", listenerID)
-	logrus.Infoln("*****API__UpdateListener: ", "opt: ", opt)
+	klog.V(5).Infoln("*****API__UpdateListener: ", "lbID: ", lbID, "listenerID: ", listenerID)
+	klog.V(5).Infoln("*****API__UpdateListener: ", "opt: ", opt)
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.ListenerID = listenerID
@@ -304,20 +303,20 @@ func (c *API) UpdateListener(lbID, listenerID string, opt *listener.UpdateOpts) 
 	for {
 		err = listener.Update(c.VLBSC, opt)
 		if err != nil && IsLoadBalancerNotReady(err) {
-			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			klog.V(5).Infof("LoadBalancerNotReady, retry after 5 seconds")
 			time.Sleep(5 * time.Second)
 			continue
 		} else {
 			break
 		}
 	}
-	logrus.Infoln("*****API__UpdateListener: ", "err: ", err)
+	klog.V(5).Infoln("*****API__UpdateListener: ", "err: ", err)
 	return err
 }
 
 // POLICY
 func (c *API) CreatePolicy(lbID, listenerID string, opt *policy.CreateOptsBuilder) (*lObjects.Policy, error) {
-	logrus.Infoln("*****API__CreatePolicy: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID, "listenerID: ", listenerID, "opt: ", opt)
+	klog.V(5).Infoln("*****API__CreatePolicy: ", "lbID: ", lbID, "listenerID: ", listenerID, "opt: ", opt)
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.ListenerID = listenerID
@@ -327,42 +326,42 @@ func (c *API) CreatePolicy(lbID, listenerID string, opt *policy.CreateOptsBuilde
 	for {
 		resp, err = policy.Create(c.VLBSC, opt)
 		if err != nil && IsLoadBalancerNotReady(err) {
-			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			klog.V(5).Infof("LoadBalancerNotReady, retry after 5 seconds")
 			time.Sleep(5 * time.Second)
 			continue
 		} else {
 			break
 		}
 	}
-	logrus.Infoln("*****API__CreatePolicy: ", "resp: ", resp, "err: ", err)
+	klog.V(5).Infoln("*****API__CreatePolicy: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) ListPolicyOfListener(lbID, listenerID string) ([]*lObjects.Policy, error) {
-	// logrus.Infoln("*****API__ListPolicyOfListener: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID, "listenerID: ", listenerID)
+	// klog.V(5).Infoln("*****API__ListPolicyOfListener: ", "lbID: ", lbID, "listenerID: ", listenerID)
 	opt := &policy.ListOptsBuilder{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.ListenerID = listenerID
 	resp, err := policy.List(c.VLBSC, opt)
-	// logrus.Infoln("*****API__ListPolicyOfListener: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("*****API__ListPolicyOfListener: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) GetPolicy(lbID, listenerID, policyID string) (*lObjects.Policy, error) {
-	// logrus.Infoln("*****API__GetPolicy: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID, "listenerID: ", listenerID, "policyID: ", policyID)
+	// klog.V(5).Infoln("*****API__GetPolicy: ", "lbID: ", lbID, "listenerID: ", listenerID, "policyID: ", policyID)
 	opt := &policy.GetOptsBuilder{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.ListenerID = listenerID
 	opt.PolicyID = policyID
 	resp, err := policy.Get(c.VLBSC, opt)
-	// logrus.Infoln("*****API__GetPolicy: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("*****API__GetPolicy: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) UpdatePolicy(lbID, listenerID, policyID string, opt *policy.UpdateOptsBuilder) error {
-	logrus.Infoln("*****API__UpdatePolicy: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID, "listenerID: ", listenerID, "policyID: ", policyID)
+	klog.V(5).Infoln("*****API__UpdatePolicy: ", "lbID: ", lbID, "listenerID: ", listenerID, "policyID: ", policyID)
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.ListenerID = listenerID
@@ -372,19 +371,19 @@ func (c *API) UpdatePolicy(lbID, listenerID, policyID string, opt *policy.Update
 	for {
 		err = policy.Update(c.VLBSC, opt)
 		if err != nil && IsLoadBalancerNotReady(err) {
-			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			klog.V(5).Infof("LoadBalancerNotReady, retry after 5 seconds")
 			time.Sleep(5 * time.Second)
 			continue
 		} else {
 			break
 		}
 	}
-	logrus.Infoln("*****API__UpdatePolicy: ", "err: ", err)
+	klog.V(5).Infoln("*****API__UpdatePolicy: ", "err: ", err)
 	return err
 }
 
 func (c *API) DeletePolicy(lbID, listenerID, policyID string) error {
-	logrus.Infoln("*****API__DeletePolicy: ", "lbID: ", lbID, "ProjectID: ", c.ProjectID, "listenerID: ", listenerID, "policyID: ", policyID)
+	klog.V(5).Infoln("*****API__DeletePolicy: ", "lbID: ", lbID, "listenerID: ", listenerID, "policyID: ", policyID)
 	opt := &policy.DeleteOptsBuilder{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
@@ -395,68 +394,61 @@ func (c *API) DeletePolicy(lbID, listenerID, policyID string) error {
 	for {
 		err = policy.Delete(c.VLBSC, opt)
 		if err != nil && IsLoadBalancerNotReady(err) {
-			klog.Infof("LoadBalancerNotReady, retry after 5 seconds")
+			klog.V(5).Infof("LoadBalancerNotReady, retry after 5 seconds")
 			time.Sleep(5 * time.Second)
 			continue
 		} else {
 			break
 		}
 	}
-	logrus.Infoln("*****API__DeletePolicy: ", "err: ", err)
+	klog.V(5).Infoln("*****API__DeletePolicy: ", "err: ", err)
 	return err
 }
 
 // CERTIFICATE
 func (c *API) ImportCertificate(opt *certificates.ImportOpts) (*lObjects.Certificate, error) {
-	logrus.Infoln("*****API__ImportCertificate: ", "ProjectID: ", c.ProjectID, "opt: ", opt)
+	klog.V(5).Infoln("*****API__ImportCertificate: ", "opt: ", opt)
 	opt.ProjectID = c.ProjectID
 	resp, err := certificates.Import(c.VLBSC, opt)
-	logrus.Infoln("*****API__ImportCertificate: ", "resp: ", resp, "err: ", err)
+	klog.V(5).Infoln("*****API__ImportCertificate: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) ListCertificate() ([]*lObjects.Certificate, error) {
-	// logrus.Infoln("*****API__ListCertificate: ", "ProjectID: ", c.ProjectID)
+	// klog.V(5).Infoln("*****API__ListCertificate: ")
 	opt := &certificates.ListOpts{}
 	opt.ProjectID = c.ProjectID
 	resp, err := certificates.List(c.VLBSC, opt)
-	// logrus.Infoln("*****API__ListCertificate: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("*****API__ListCertificate: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) GetCertificate(certificateID string) (*lObjects.Certificate, error) {
-	logrus.Infoln("*****API__GetCertificate: ", "ProjectID: ", c.ProjectID, "certificateID: ", certificateID)
+	klog.V(5).Infoln("*****API__GetCertificate: ", "certificateID: ", certificateID)
 	opt := &certificates.GetOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.CaID = certificateID
 	resp, err := certificates.Get(c.VLBSC, opt)
-	logrus.Infoln("*****API__GetCertificate: ", "resp: ", resp, "err: ", err)
+	klog.V(5).Infoln("*****API__GetCertificate: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) DeleteCertificate(certificateID string) error {
-	logrus.Infoln("*****API__DeleteCertificate: ", "ProjectID: ", c.ProjectID, "certificateID: ", certificateID)
+	klog.V(5).Infoln("*****API__DeleteCertificate: ", "certificateID: ", certificateID)
 	opt := &certificates.DeleteOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.CaID = certificateID
 	err := certificates.Delete(c.VLBSC, opt)
-	logrus.Infoln("*****API__DeleteCertificate: ", "err: ", err)
+	klog.V(5).Infoln("*****API__DeleteCertificate: ", "err: ", err)
 	return err
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-func Sleep(t int) {
-	for i := 0; i < t; i++ {
-		time.Sleep(time.Second)
-		klog.Infof("Wait %d seconds", t-i)
-	}
-}
-
 func (c *API) FindPolicyByName(lbID, listenerID, name string) (*lObjects.Policy, error) {
 	policyArr, err := c.ListPolicyOfListener(lbID, listenerID)
 	if err != nil {
-		logrus.Errorln("error when list policy", err)
+		klog.Errorln("error when list policy", err)
 		return nil, err
 	}
 	for _, policy := range policyArr {
@@ -505,7 +497,7 @@ func (c *API) FindListenerByPort(lbID string, port int) (*lObjects.Listener, err
 	for _, listener := range listeners {
 		if listener.ProtocolPort == port {
 			if (port == 443 && listener.Protocol != "HTTPS") || (port == 80 && listener.Protocol != "HTTP") {
-				logrus.Infof("listener %s has wrong protocol %s or wrong port %d", listener.UUID, listener.Protocol, listener.ProtocolPort)
+				klog.Infof("listener %s has wrong protocol %s or wrong port %d", listener.UUID, listener.Protocol, listener.ProtocolPort)
 				return nil, fmt.Errorf("listener %s has wrong protocol %s or wrong port %d", listener.UUID, listener.Protocol, listener.ProtocolPort)
 			}
 			return listener, nil
@@ -518,14 +510,14 @@ func (c *API) WaitForLBActive(lbID string) *lObjects.LoadBalancer {
 	for {
 		lb, err := c.GetLB(lbID)
 		if err != nil {
-			logrus.Errorln("error when get lb status: ", err)
+			klog.Errorln("error when get lb status: ", err)
 		} else if lb.Status == "ACTIVE" {
 			return lb
 		} else if lb.Status == "ERROR" {
 			klog.Error("LoadBalancer is in ERROR state")
 			return lb
 		}
-		logrus.Infoln("------- wait for lb active:", lb.Status, "-------")
+		klog.V(3).Infoln("------- wait for lb active:", lb.Status, "-------")
 		time.Sleep(10 * time.Second)
 	}
 }

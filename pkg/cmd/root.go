@@ -27,8 +27,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/config"
-	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/controller"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/config"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/controller"
 	"github.com/vngcloud/vngcloud-ingress-controller/pkg/version"
 	"k8s.io/component-base/cli"
 	"k8s.io/klog/v2"

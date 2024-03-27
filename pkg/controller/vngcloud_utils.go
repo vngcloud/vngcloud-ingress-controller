@@ -1,24 +1,51 @@
 package controller
 
 import (
+	"fmt"
 	"strconv"
 
+	client2 "github.com/vngcloud/vngcloud-go-sdk/client"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/listener"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/loadbalancer"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
+	v1Portal "github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/portal/v1"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/consts"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/utils/metadata"
 	nwv1 "k8s.io/api/networking/v1"
 	"k8s.io/klog/v2"
 )
 
-const (
-	DEFAULT_HASH_NAME_LENGTH          = 5     // a unique hash name
-	DEFAULT_PORTAL_DESCRIPTION_LENGTH = 255   // All the description must be less than 255 characters
-	DEFAULT_LB_PREFIX_NAME            = "vks" // "vks" is abbreviated of "cluster"
-	DEFAULT_NAME_DEFAULT_POOL         = "vks_default_pool"
-	DEFAULT_PACKAGE_ID                = "lbp-f562b658-0fd4-4fa6-9c57-c1a803ccbf86"
-	DEFAULT_HTTPS_LISTENER_NAME       = "vks_https_listener"
-	DEFAULT_HTTP_LISTENER_NAME        = "vks_http_listener"
-)
+func getMetadataOption(pMetadata metadata.Opts) metadata.Opts {
+	if pMetadata.SearchOrder == "" {
+		pMetadata.SearchOrder = fmt.Sprintf("%s,%s", metadata.ConfigDriveID, metadata.MetadataID)
+	}
+	klog.Info("getMetadataOption; metadataOpts is ", pMetadata)
+	return pMetadata
+}
+
+func setupPortalInfo(pProvider *client2.ProviderClient, pMedatata metadata.IMetadata, pPortalURL string) (*ExtraInfo, error) {
+	projectID, err := pMedatata.GetProjectID()
+	if err != nil {
+		return nil, err
+	}
+
+	portalClient, _ := vngcloud.NewServiceClient(pPortalURL, pProvider, "portal")
+	portalInfo, err := v1Portal.Get(portalClient, projectID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if portalInfo == nil {
+		return nil, fmt.Errorf("can not get portal information")
+	}
+
+	return &ExtraInfo{
+		ProjectID: portalInfo.ProjectID,
+		UserID:    portalInfo.UserID,
+	}, nil
+}
 
 func PointerOf[T any](t T) *T {
 	return &t
@@ -27,25 +54,25 @@ func PointerOf[T any](t T) *T {
 func CreateLoadbalancerOptions(ing *nwv1.Ingress) *loadbalancer.CreateOpts {
 	opt := &loadbalancer.CreateOpts{
 		Name:      "",
-		PackageID: DEFAULT_PACKAGE_ID,
+		PackageID: consts.DEFAULT_PACKAGE_ID,
 		Scheme:    loadbalancer.CreateOptsSchemeOptInternet,
 		SubnetID:  "",
 		Type:      loadbalancer.CreateOptsTypeOptLayer7,
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationLoadBalancerName]; ok {
+	if option, ok := ing.Annotations[consts.ServiceAnnotationLoadBalancerName]; ok {
 		opt.Name = option
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationPackageID]; ok {
+	if option, ok := ing.Annotations[consts.ServiceAnnotationPackageID]; ok {
 		opt.PackageID = option
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationLoadBalancerInternal]; ok {
+	if option, ok := ing.Annotations[consts.ServiceAnnotationLoadBalancerInternal]; ok {
 		switch option {
 		case "true":
 			opt.Scheme = loadbalancer.CreateOptsSchemeOptInternal
 		case "false":
 			opt.Scheme = loadbalancer.CreateOptsSchemeOptInternet
 		default:
-			klog.Warningf("Invalid annotation \"%s\" value, must be true or false", ServiceAnnotationLoadBalancerInternal)
+			klog.Warningf("Invalid annotation \"%s\" value, must be true or false", consts.ServiceAnnotationLoadBalancerInternal)
 		}
 	}
 	return opt
@@ -53,7 +80,7 @@ func CreateLoadbalancerOptions(ing *nwv1.Ingress) *loadbalancer.CreateOpts {
 
 func CreateListenerOptions(ing *nwv1.Ingress, isHTTPS bool) *listener.CreateOpts {
 	opt := &listener.CreateOpts{
-		ListenerName:                DEFAULT_HTTP_LISTENER_NAME,
+		ListenerName:                consts.DEFAULT_HTTP_LISTENER_NAME,
 		ListenerProtocol:            listener.CreateOptsListenerProtocolOptHTTP,
 		ListenerProtocolPort:        80,
 		CertificateAuthorities:      nil,
@@ -66,7 +93,7 @@ func CreateListenerOptions(ing *nwv1.Ingress, isHTTPS bool) *listener.CreateOpts
 		AllowedCidrs:                "0.0.0.0/0",
 	}
 	if isHTTPS {
-		opt.ListenerName = DEFAULT_HTTPS_LISTENER_NAME
+		opt.ListenerName = consts.DEFAULT_HTTPS_LISTENER_NAME
 		opt.ListenerProtocol = listener.CreateOptsListenerProtocolOptHTTPS
 		opt.ListenerProtocolPort = 443
 
@@ -74,16 +101,16 @@ func CreateListenerOptions(ing *nwv1.Ingress, isHTTPS bool) *listener.CreateOpts
 	if ing == nil {
 		return opt
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationIdleTimeoutClient]; ok {
-		opt.TimeoutClient = ParseIntAnnotation(option, ServiceAnnotationIdleTimeoutClient, opt.TimeoutClient)
+	if option, ok := ing.Annotations[consts.ServiceAnnotationIdleTimeoutClient]; ok {
+		opt.TimeoutClient = ParseIntAnnotation(option, consts.ServiceAnnotationIdleTimeoutClient, opt.TimeoutClient)
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationIdleTimeoutMember]; ok {
-		opt.TimeoutMember = ParseIntAnnotation(option, ServiceAnnotationIdleTimeoutMember, opt.TimeoutMember)
+	if option, ok := ing.Annotations[consts.ServiceAnnotationIdleTimeoutMember]; ok {
+		opt.TimeoutMember = ParseIntAnnotation(option, consts.ServiceAnnotationIdleTimeoutMember, opt.TimeoutMember)
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationIdleTimeoutConnection]; ok {
-		opt.TimeoutConnection = ParseIntAnnotation(option, ServiceAnnotationIdleTimeoutConnection, opt.TimeoutConnection)
+	if option, ok := ing.Annotations[consts.ServiceAnnotationIdleTimeoutConnection]; ok {
+		opt.TimeoutConnection = ParseIntAnnotation(option, consts.ServiceAnnotationIdleTimeoutConnection, opt.TimeoutConnection)
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationListenerAllowedCIDRs]; ok {
+	if option, ok := ing.Annotations[consts.ServiceAnnotationListenerAllowedCIDRs]; ok {
 		opt.AllowedCidrs = option
 	}
 	return opt
@@ -108,7 +135,7 @@ func CreatePoolOptions(ing *nwv1.Ingress) *pool.CreateOpts {
 	if ing == nil {
 		return opt
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationMonitorProtocol]; ok {
+	if option, ok := ing.Annotations[consts.ServiceAnnotationMonitorProtocol]; ok {
 		switch option {
 		case string(pool.CreateOptsHealthCheckProtocolOptTCP), string(pool.CreateOptsHealthCheckProtocolOptHTTP):
 			opt.HealthMonitor.HealthCheckProtocol = pool.CreateOptsHealthCheckProtocolOpt(option)
@@ -125,87 +152,87 @@ func CreatePoolOptions(ing *nwv1.Ingress) *pool.CreateOpts {
 					HttpVersion:         PointerOf(pool.CreateOptsHealthCheckHttpVersionOptHttp1),
 					DomainName:          PointerOf(""),
 				}
-				if option, ok := ing.Annotations[ServiceAnnotationMonitorHttpMethod]; ok {
+				if option, ok := ing.Annotations[consts.ServiceAnnotationMonitorHttpMethod]; ok {
 					switch option {
 					case string(pool.CreateOptsHealthCheckMethodOptGET),
 						string(pool.CreateOptsHealthCheckMethodOptPUT),
 						string(pool.CreateOptsHealthCheckMethodOptPOST):
 						opt.HealthMonitor.HealthCheckMethod = PointerOf(pool.CreateOptsHealthCheckMethodOpt(option))
 					default:
-						klog.Warningf("Invalid annotation \"%s\" value, must be one of %s, %s, %s", ServiceAnnotationMonitorHttpMethod,
+						klog.Warningf("Invalid annotation \"%s\" value, must be one of %s, %s, %s", consts.ServiceAnnotationMonitorHttpMethod,
 							pool.CreateOptsHealthCheckMethodOptGET,
 							pool.CreateOptsHealthCheckMethodOptPUT,
 							pool.CreateOptsHealthCheckMethodOptPOST)
 					}
 				}
-				if option, ok := ing.Annotations[ServiceAnnotationMonitorHttpPath]; ok {
+				if option, ok := ing.Annotations[consts.ServiceAnnotationMonitorHttpPath]; ok {
 					opt.HealthMonitor.HealthCheckPath = PointerOf(option)
 				}
-				if option, ok := ing.Annotations[ServiceAnnotationMonitorHttpSuccessCode]; ok {
+				if option, ok := ing.Annotations[consts.ServiceAnnotationMonitorHttpSuccessCode]; ok {
 					opt.HealthMonitor.SuccessCode = PointerOf(option)
 				}
-				if option, ok := ing.Annotations[ServiceAnnotationMonitorHttpVersion]; ok {
+				if option, ok := ing.Annotations[consts.ServiceAnnotationMonitorHttpVersion]; ok {
 					switch option {
 					case string(pool.CreateOptsHealthCheckHttpVersionOptHttp1),
 						string(pool.CreateOptsHealthCheckHttpVersionOptHttp1Minor1):
 						opt.HealthMonitor.HttpVersion = PointerOf(pool.CreateOptsHealthCheckHttpVersionOpt(option))
 					default:
-						klog.Warningf("Invalid annotation \"%s\" value, must be one of %s, %s", ServiceAnnotationMonitorHttpVersion,
+						klog.Warningf("Invalid annotation \"%s\" value, must be one of %s, %s", consts.ServiceAnnotationMonitorHttpVersion,
 							pool.CreateOptsHealthCheckHttpVersionOptHttp1,
 							pool.CreateOptsHealthCheckHttpVersionOptHttp1Minor1)
 					}
 				}
-				if option, ok := ing.Annotations[ServiceAnnotationMonitorHttpDomainName]; ok {
+				if option, ok := ing.Annotations[consts.ServiceAnnotationMonitorHttpDomainName]; ok {
 					opt.HealthMonitor.DomainName = PointerOf(option)
 				}
 			}
 		default:
-			klog.Warningf("Invalid annotation \"%s\" value, must be one of %s, %s", ServiceAnnotationMonitorProtocol,
+			klog.Warningf("Invalid annotation \"%s\" value, must be one of %s, %s", consts.ServiceAnnotationMonitorProtocol,
 				pool.CreateOptsHealthCheckProtocolOptTCP,
 				pool.CreateOptsHealthCheckProtocolOptHTTP)
 		}
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationPoolAlgorithm]; ok {
+	if option, ok := ing.Annotations[consts.ServiceAnnotationPoolAlgorithm]; ok {
 		switch option {
 		case string(pool.CreateOptsAlgorithmOptRoundRobin),
 			string(pool.CreateOptsAlgorithmOptLeastConn),
 			string(pool.CreateOptsAlgorithmOptSourceIP):
 			opt.Algorithm = pool.CreateOptsAlgorithmOpt(option)
 		default:
-			klog.Warningf("Invalid annotation \"%s\" value, must be one of %s, %s, %s", ServiceAnnotationPoolAlgorithm,
+			klog.Warningf("Invalid annotation \"%s\" value, must be one of %s, %s, %s", consts.ServiceAnnotationPoolAlgorithm,
 				pool.CreateOptsAlgorithmOptRoundRobin,
 				pool.CreateOptsAlgorithmOptLeastConn,
 				pool.CreateOptsAlgorithmOptSourceIP)
 		}
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationHealthyThreshold]; ok {
-		opt.HealthMonitor.HealthyThreshold = ParseIntAnnotation(option, ServiceAnnotationHealthyThreshold, opt.HealthMonitor.HealthyThreshold)
+	if option, ok := ing.Annotations[consts.ServiceAnnotationHealthyThreshold]; ok {
+		opt.HealthMonitor.HealthyThreshold = ParseIntAnnotation(option, consts.ServiceAnnotationHealthyThreshold, opt.HealthMonitor.HealthyThreshold)
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationMonitorUnhealthyThreshold]; ok {
-		opt.HealthMonitor.UnhealthyThreshold = ParseIntAnnotation(option, ServiceAnnotationMonitorUnhealthyThreshold, opt.HealthMonitor.UnhealthyThreshold)
+	if option, ok := ing.Annotations[consts.ServiceAnnotationMonitorUnhealthyThreshold]; ok {
+		opt.HealthMonitor.UnhealthyThreshold = ParseIntAnnotation(option, consts.ServiceAnnotationMonitorUnhealthyThreshold, opt.HealthMonitor.UnhealthyThreshold)
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationMonitorTimeout]; ok {
-		opt.HealthMonitor.Timeout = ParseIntAnnotation(option, ServiceAnnotationMonitorTimeout, opt.HealthMonitor.Timeout)
+	if option, ok := ing.Annotations[consts.ServiceAnnotationMonitorTimeout]; ok {
+		opt.HealthMonitor.Timeout = ParseIntAnnotation(option, consts.ServiceAnnotationMonitorTimeout, opt.HealthMonitor.Timeout)
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationMonitorInterval]; ok {
-		opt.HealthMonitor.Interval = ParseIntAnnotation(option, ServiceAnnotationMonitorInterval, opt.HealthMonitor.Interval)
+	if option, ok := ing.Annotations[consts.ServiceAnnotationMonitorInterval]; ok {
+		opt.HealthMonitor.Interval = ParseIntAnnotation(option, consts.ServiceAnnotationMonitorInterval, opt.HealthMonitor.Interval)
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationEnableStickySession]; ok {
+	if option, ok := ing.Annotations[consts.ServiceAnnotationEnableStickySession]; ok {
 		switch option {
 		case "true", "false":
 			boolValue, _ := strconv.ParseBool(option)
 			opt.Stickiness = PointerOf(boolValue)
 		default:
-			klog.Warningf("Invalid annotation \"%s\" value, must be true or false", ServiceAnnotationEnableStickySession)
+			klog.Warningf("Invalid annotation \"%s\" value, must be true or false", consts.ServiceAnnotationEnableStickySession)
 		}
 	}
-	if option, ok := ing.Annotations[ServiceAnnotationEnableTLSEncryption]; ok {
+	if option, ok := ing.Annotations[consts.ServiceAnnotationEnableTLSEncryption]; ok {
 		switch option {
 		case "true", "false":
 			boolValue, _ := strconv.ParseBool(option)
 			opt.TLSEncryption = PointerOf(boolValue)
 		default:
-			klog.Warningf("Invalid annotation \"%s\" value, must be true or false", ServiceAnnotationEnableTLSEncryption)
+			klog.Warningf("Invalid annotation \"%s\" value, must be true or false", consts.ServiceAnnotationEnableTLSEncryption)
 		}
 	}
 	return opt

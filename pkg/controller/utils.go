@@ -8,13 +8,13 @@ import (
 	"math"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode"
 
 	lObjects "github.com/vngcloud/vngcloud-go-sdk/vngcloud/objects"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
-	vErrors "github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/errors"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/consts"
+	vErrors "github.com/vngcloud/vngcloud-ingress-controller/pkg/utils/errors"
 	apiv1 "k8s.io/api/core/v1"
 	nwv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -22,36 +22,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 )
-
-func EncodeToValidName(str string) string {
-	// Only letters (a-z, A-Z, 0-9, '_', '.', '-') are allowed.
-	// the other char will repaced by ":{number}:"
-	for _, char := range str {
-		if char >= 'a' && char <= 'z' {
-			continue
-		}
-		if char >= 'A' && char <= 'Z' {
-			continue
-		}
-		if char >= '0' && char <= '9' {
-			continue
-		}
-		if char == '_' || char == '.' || char == '-' {
-			continue
-		}
-		str = strings.ReplaceAll(str, string(char), fmt.Sprintf("-%d-", char))
-	}
-	return str
-}
-func DecodeFromValidName(str string) string {
-	r, _ := regexp.Compile("-[0-9]+-")
-	matchs := r.FindStringSubmatch(str)
-	for _, match := range matchs {
-		number, _ := strconv.Atoi(match[1 : len(match)-1])
-		str = strings.ReplaceAll(str, match, fmt.Sprintf("%c", number))
-	}
-	return str
-}
 
 // hash a string to a string have 10 char
 func HashString(str string) string {
@@ -109,25 +79,35 @@ func GetResourceHashName(ing *nwv1.Ingress, clusterID string) string {
 	return hash
 }
 
-// GetResourceName get Ingress related resource name.
-func GetResourceName(ing *nwv1.Ingress, clusterID string) string {
-	hash := GetResourceHashName(ing, clusterID)
-	name := fmt.Sprintf("%s_%s_%s_%s_%s", DEFAULT_LB_PREFIX_NAME, clusterID[8:16], TrimString(ing.Namespace, 10), TrimString(ing.Name, 10), TrimString(hash, DEFAULT_HASH_NAME_LENGTH))
-	return validateName(name)
+func generateLBName(ing *nwv1.Ingress) string {
+	name := fmt.Sprintf("%s-%s", ing.Namespace, ing.Name)
+	hashStr := RandStr(consts.DEFAULT_HASH_NAME_LENGTH)
+	tmp := fmt.Sprintf("%s-%s-%s", consts.DEFAULT_LB_PREFIX_NAME, name, hashStr)
+	return validateName(tmp)
 }
-func GetPolicyName(prefix string, mode bool, ruleIndex, pathIndex int) string {
-	name := fmt.Sprintf("%s_%s_%t_r%d_p%d", DEFAULT_LB_PREFIX_NAME, prefix, mode, ruleIndex, pathIndex)
-	return validateName(name)
-}
-func GetPoolName(prefix, serviceName string, port int) string {
-	name := fmt.Sprintf("%s_%s_%s_%d", DEFAULT_LB_PREFIX_NAME, prefix, TrimString(strings.ReplaceAll(serviceName, "/", "-"), 35), port)
+
+func generatePolicyName(prefix string, mode bool, ruleIndex, pathIndex int) string {
+	name := fmt.Sprintf("%s_%s_%t_r%d_p%d", consts.DEFAULT_LB_PREFIX_NAME, prefix, mode, ruleIndex, pathIndex)
 	return validateName(name)
 }
 
-func GetCertificateName(namespace, name string) string {
+func generatePoolName(prefix, serviceName string, port int) string {
+	name := fmt.Sprintf("%s_%s_%s_%d",
+		consts.DEFAULT_LB_PREFIX_NAME,
+		prefix,
+		TrimString(strings.ReplaceAll(serviceName, "/", "-"), 35),
+		port)
+	return validateName(name)
+}
+
+func generateCertificateName(namespace, name string) string {
 	fullName := fmt.Sprintf("%s-%s", namespace, name)
 	hashName := HashString(fullName)
-	newName := fmt.Sprintf("%s-%s-%s-%s-", DEFAULT_LB_PREFIX_NAME, TrimString(namespace, 10), TrimString(name, 10), TrimString(hashName, DEFAULT_HASH_NAME_LENGTH))
+	newName := fmt.Sprintf("%s-%s-%s-%s-",
+		consts.DEFAULT_LB_PREFIX_NAME,
+		TrimString(namespace, 10),
+		TrimString(name, 10),
+		TrimString(hashName, consts.DEFAULT_HASH_NAME_LENGTH))
 	return validateName(newName)
 }
 
@@ -137,27 +117,13 @@ func validateName(newName string) string {
 			newName = strings.ReplaceAll(newName, string(char), "-")
 		}
 	}
-	return TrimString(newName, DEFAULT_PORTAL_NAME_LENGTH)
+	return TrimString(newName, consts.DEFAULT_PORTAL_NAME_LENGTH)
 }
 
 func CheckIfPoolMemberExist(mems []*pool.Member, mem *pool.Member) bool {
 	for _, r := range mems {
 		if r.IpAddress == mem.IpAddress &&
 			r.Port == mem.Port &&
-			r.MonitorPort == mem.MonitorPort &&
-			r.Backup == mem.Backup &&
-			// r.Name == mem.Name &&
-			r.Weight == mem.Weight {
-			return true
-		}
-	}
-	return false
-}
-
-func CheckIfPoolMemberExist2(mems []*lObjects.Member, mem *pool.Member) bool {
-	for _, r := range mems {
-		if r.Address == mem.IpAddress &&
-			r.ProtocolPort == mem.Port &&
 			r.MonitorPort == mem.MonitorPort &&
 			r.Backup == mem.Backup &&
 			// r.Name == mem.Name &&
@@ -298,12 +264,6 @@ func getServiceNodePort(serviceLister corelisters.ServiceLister, name string, se
 	}
 
 	return nodePort, nil
-}
-
-func generateLBName(ing *nwv1.Ingress) string {
-	name := fmt.Sprintf("%s-%s", ing.Namespace, ing.Name)
-	hashStr := RandStr(DEFAULT_HASH_NAME_LENGTH)
-	return fmt.Sprintf("%s-%s-%s", DEFAULT_LB_PREFIX_NAME, name, hashStr)
 }
 
 func ensureNodesInCluster(pserver []*lObjects.Server) (string, error) {

@@ -17,7 +17,7 @@ limitations under the License.
 package main
 
 import (
-	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/cmd"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/cmd"
 )
 
 func main() {

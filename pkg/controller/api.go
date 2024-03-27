@@ -13,7 +13,7 @@ import (
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/loadbalancer"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/policy"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
-	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/errors"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/utils/errors"
 	"k8s.io/klog/v2"
 )
 

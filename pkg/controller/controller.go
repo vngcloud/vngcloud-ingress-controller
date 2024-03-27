@@ -19,9 +19,10 @@ import (
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/loadbalancer"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/policy"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
-	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/config"
-	vErrors "github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/errors"
-	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/metadata"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/config"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/consts"
+	vErrors "github.com/vngcloud/vngcloud-ingress-controller/pkg/utils/errors"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/utils/metadata"
 	"github.com/vngcloud/vngcloud-ingress-controller/pkg/version"
 	apiv1 "k8s.io/api/core/v1"
 	nwv1 "k8s.io/api/networking/v1"
@@ -42,6 +43,12 @@ import (
 
 // EventType type of event associated with an informer
 type EventType string
+
+const (
+	CreateEvent EventType = "CREATE"
+	UpdateEvent EventType = "UPDATE"
+	DeleteEvent EventType = "DELETE"
+)
 
 // Event holds the context of an event
 type Event struct {
@@ -318,7 +325,7 @@ func (c *Controller) nodeSyncLoop() {
 		}
 	}
 	c.knownNodes = readyWorkerNodes
-	logrus.Info("Finished to handle node change")
+	klog.Info("Finished to handle node change.")
 }
 
 func (c *Controller) runWorker() {
@@ -340,7 +347,7 @@ func (c *Controller) processNextItem() bool {
 	if err == nil {
 		// No error, reset the ratelimit counters
 		c.queue.Forget(obj)
-	} else if c.queue.NumRequeues(obj) < maxRetries {
+	} else if c.queue.NumRequeues(obj) < consts.MaxRetries {
 		logrus.WithFields(logrus.Fields{"obj": obj, "error": err}).Error("Failed to process obj (will retry)")
 		c.queue.AddRateLimited(obj)
 	} else {
@@ -426,12 +433,11 @@ func (c *Controller) ensureIngress(oldIng, ing *nwv1.Ingress) error {
 }
 
 func (c *Controller) updateIngressStatus(ing *nwv1.Ingress, lb *lObjects.LoadBalancer) (*nwv1.Ingress, error) {
-	klog.Infoln("------------ updateIngressStatus() ------------")
 	if ing.ObjectMeta.Annotations == nil {
 		ing.ObjectMeta.Annotations = map[string]string{}
 	}
-	ing.ObjectMeta.Annotations[ServiceAnnotationLoadBalancerID] = lb.UUID
-	ing.ObjectMeta.Annotations[ServiceAnnotationLoadBalancerName] = lb.Name
+	ing.ObjectMeta.Annotations[consts.ServiceAnnotationLoadBalancerID] = lb.UUID
+	ing.ObjectMeta.Annotations[consts.ServiceAnnotationLoadBalancerName] = lb.Name
 
 	newState := new(nwv1.IngressLoadBalancerStatus)
 	newState.Ingress = []nwv1.IngressLoadBalancerIngress{{IP: lb.Address}}
@@ -538,7 +544,7 @@ func (c *Controller) GetLoadbalancerIDByIngress(ing *nwv1.Ingress) (string, erro
 	}
 
 	// check in annotation lb id
-	if lbID, ok := ing.Annotations[ServiceAnnotationLoadBalancerID]; ok {
+	if lbID, ok := ing.Annotations[consts.ServiceAnnotationLoadBalancerID]; ok {
 		for _, lb := range lbsInSubnet {
 			if lb.UUID == lbID {
 				return lb.UUID, nil
@@ -549,7 +555,7 @@ func (c *Controller) GetLoadbalancerIDByIngress(ing *nwv1.Ingress) (string, erro
 	}
 
 	// check in annotation lb name
-	if lbName, ok := ing.Annotations[ServiceAnnotationLoadBalancerName]; ok {
+	if lbName, ok := ing.Annotations[consts.ServiceAnnotationLoadBalancerName]; ok {
 		for _, lb := range lbsInSubnet {
 			if lb.Name == lbName {
 				return lb.UUID, nil
@@ -725,15 +731,15 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 	}
 
 	// check in annotation
-	if lbID, ok := ing.Annotations[ServiceAnnotationLoadBalancerID]; ok {
+	if lbID, ok := ing.Annotations[consts.ServiceAnnotationLoadBalancerID]; ok {
 		ingressInspect.lbID = lbID
 	}
-	if lbName, ok := ing.Annotations[ServiceAnnotationLoadBalancerName]; ok {
+	if lbName, ok := ing.Annotations[consts.ServiceAnnotationLoadBalancerName]; ok {
 		ingressInspect.lbName = lbName
 	} else {
 		ingressInspect.lbName = generateLBName(ing)
 	}
-	ingressInspect.lbPostfix = TrimString(HashString(ingressInspect.lbName), DEFAULT_HASH_NAME_LENGTH)
+	ingressInspect.lbPostfix = TrimString(HashString(ingressInspect.lbName), consts.DEFAULT_HASH_NAME_LENGTH)
 	ingressInspect.lbOptions.Name = ingressInspect.lbName
 
 	nodeObjs, err := listWithPredicate(c.nodeLister, getNodeConditionPredicate())
@@ -778,7 +784,7 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 			return nil, err
 		}
 		version := secret.ObjectMeta.ResourceVersion
-		name := GetCertificateName(ing.Namespace, tls.SecretName)
+		name := generateCertificateName(ing.Namespace, tls.SecretName)
 		secretName := tls.SecretName
 		ingressInspect.CertificateExpander = append(ingressInspect.CertificateExpander, &CertificateExpander{
 			Name:       name,
@@ -790,7 +796,7 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 
 	GetPoolExpander := func(service *nwv1.IngressServiceBackend) (*PoolExpander, error) {
 		serviceName := fmt.Sprintf("%s/%s", ing.ObjectMeta.Namespace, service.Name)
-		poolName := GetPoolName(ingressInspect.lbPostfix, serviceName, int(service.Port.Number))
+		poolName := generatePoolName(ingressInspect.lbPostfix, serviceName, int(service.Port.Number))
 		nodePort, err := getServiceNodePort(c.serviceLister, serviceName, service)
 		if err != nil {
 			klog.Errorf("error when get node port: %v", err)
@@ -819,7 +825,7 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 
 	// check if have default pool
 	defaultPool := CreatePoolOptions(ing)
-	defaultPool.PoolName = DEFAULT_NAME_DEFAULT_POOL
+	defaultPool.PoolName = consts.DEFAULT_NAME_DEFAULT_POOL
 	defaultPool.Members = make([]*pool.Member, 0)
 	if ing.Spec.DefaultBackend != nil && ing.Spec.DefaultBackend.Service != nil {
 		defaultPoolExpander, err := GetPoolExpander(ing.Spec.DefaultBackend.Service)
@@ -853,7 +859,7 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 		_, isHttpsListener := mapTLS[rule.Host]
 
 		for pathIndex, path := range rule.HTTP.Paths {
-			policyName := GetPolicyName(ingressInspect.lbPostfix, isHttpsListener, ruleIndex, pathIndex)
+			policyName := generatePolicyName(ingressInspect.lbPostfix, isHttpsListener, ruleIndex, pathIndex)
 
 			poolExpander, err := GetPoolExpander(path.Backend.Service)
 			if err != nil {
@@ -965,7 +971,7 @@ func (c *Controller) ensureLoadBalancer(inspect *IngressInspect) (string, error)
 			c.api.WaitForLBActive(inspect.lbID)
 		}
 		if lb.Internal != (inspect.lbOptions.Scheme == loadbalancer.CreateOptsSchemeOptInternal) {
-			klog.Warningf("Annotation %s not match, only meaning when create new load-balancer", ServiceAnnotationLoadBalancerInternal)
+			klog.Warningf("Annotation %s not match, only meaning when create new load-balancer", consts.ServiceAnnotationLoadBalancerInternal)
 		}
 	}
 	checkDetailLB()
@@ -1092,9 +1098,9 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 			return nil, err
 		}
 		poolID := newIngExpander.PoolExpander[poolIndex].UUID
-		listenerName := DEFAULT_HTTP_LISTENER_NAME
+		listenerName := consts.DEFAULT_HTTP_LISTENER_NAME
 		if ipolicy.isHttpsListener {
-			listenerName = DEFAULT_HTTPS_LISTENER_NAME
+			listenerName = consts.DEFAULT_HTTPS_LISTENER_NAME
 		}
 		listenerIndex, isHave := mapListenerNameIndex[listenerName]
 		if !isHave {
@@ -1146,7 +1152,7 @@ func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExp
 	}
 	for _, oldIngPool := range oldIngExpander.PoolExpander {
 		_, isPoolWillUse := poolWillUse[oldIngPool.PoolName]
-		if !isPoolWillUse && oldIngPool.PoolName != DEFAULT_NAME_DEFAULT_POOL {
+		if !isPoolWillUse && oldIngPool.PoolName != consts.DEFAULT_NAME_DEFAULT_POOL {
 			klog.Warningf("pool not in use: %v, delete", oldIngPool.PoolName)
 			_, err := c.deletePool(lb.UUID, oldIngPool.PoolName)
 			if err != nil {
@@ -1224,7 +1230,7 @@ func (c *Controller) deletePool(lbID, poolName string) (*lObjects.Pool, error) {
 		}
 	}
 
-	if pool.Name == DEFAULT_NAME_DEFAULT_POOL {
+	if pool.Name == consts.DEFAULT_NAME_DEFAULT_POOL {
 		klog.Info("pool is default pool, not delete")
 		return nil, nil
 	}
@@ -1283,7 +1289,6 @@ func (c *Controller) ensurePoolMember(lbID, poolID string, members []*pool.Membe
 }
 
 func (c *Controller) ensureListener(lbID, lisName string, listenerOpts listener.CreateOpts) (*lObjects.Listener, error) {
-	klog.Infof("------------ ensureListener ----------")
 	lis, err := c.api.FindListenerByPort(lbID, listenerOpts.ListenerProtocolPort)
 	if err != nil {
 		if err == vErrors.ErrNotFound {
@@ -1387,17 +1392,17 @@ func (c *Controller) toVngCloudCertificate(secretName string, namespace string, 
 	}
 
 	var keyDecode []byte
-	if keyBytes, isPresent := secret.Data[IngressSecretKeyName]; isPresent {
+	if keyBytes, isPresent := secret.Data[consts.IngressSecretKeyName]; isPresent {
 		keyDecode = keyBytes
 	} else {
-		return nil, fmt.Errorf("%s key doesn't exist in the secret %s", IngressSecretKeyName, secretName)
+		return nil, fmt.Errorf("%s key doesn't exist in the secret %s", consts.IngressSecretKeyName, secretName)
 	}
 
 	var certDecode []byte
-	if certBytes, isPresent := secret.Data[IngressSecretCertName]; isPresent {
+	if certBytes, isPresent := secret.Data[consts.IngressSecretCertName]; isPresent {
 		certDecode = certBytes
 	} else {
-		return nil, fmt.Errorf("%s key doesn't exist in the secret %s", IngressSecretCertName, secretName)
+		return nil, fmt.Errorf("%s key doesn't exist in the secret %s", consts.IngressSecretCertName, secretName)
 	}
 
 	return &certificates.ImportOpts{

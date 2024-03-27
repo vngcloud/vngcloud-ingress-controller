@@ -17,8 +17,8 @@ limitations under the License.
 package config
 
 import (
-	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/client"
-	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/metadata"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/client"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/utils/metadata"
 )
 
 // Config struct contains ingress controller configuration

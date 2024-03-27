@@ -25,7 +25,8 @@ import (
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/listener"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/policy"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
-	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/errors"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/consts"
+	"github.com/vngcloud/vngcloud-ingress-controller/pkg/utils/errors"
 	apiv1 "k8s.io/api/core/v1"
 	nwv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -39,16 +40,16 @@ import (
 // the ingress.class annotation, or it's set to the configured in the
 // ingress controller.
 func IsValid(ing *nwv1.Ingress) bool {
-	ingress, ok := ing.GetAnnotations()[IngressKey]
+	ingress, ok := ing.GetAnnotations()[consts.IngressKey]
 	if !ok {
 		// check in spec
 		if ing.Spec.IngressClassName != nil {
-			return *ing.Spec.IngressClassName == IngressClass
+			return *ing.Spec.IngressClassName == consts.IngressClass
 		}
 		return false
 	}
 
-	return ingress == IngressClass
+	return ingress == consts.IngressClass
 }
 
 // create k8s client from config file
@@ -58,8 +59,8 @@ func createApiserverClient(apiserverHost string, kubeConfig string) (*kubernetes
 		return nil, err
 	}
 
-	cfg.QPS = defaultQPS
-	cfg.Burst = defaultBurst
+	cfg.QPS = consts.DefaultQPS
+	cfg.Burst = consts.DefaultBurst
 	cfg.ContentType = "application/vnd.kubernetes.protobuf"
 
 	log.Debug("creating kubernetes API client")
@@ -108,12 +109,12 @@ func getNodeConditionPredicate() NodeConditionPredicate {
 		}
 
 		// Recognize nodes labeled as not suitable for LB, and filter them also, as we were doing previously.
-		if _, hasExcludeLBRoleLabel := node.Labels[LabelNodeExcludeLB]; hasExcludeLBRoleLabel {
+		if _, hasExcludeLBRoleLabel := node.Labels[consts.LabelNodeExcludeLB]; hasExcludeLBRoleLabel {
 			return false
 		}
 
 		// Deprecated in favor of LabelNodeExcludeLB, kept for consistency and will be removed later
-		if _, hasNodeRoleMasterLabel := node.Labels[DeprecatedLabelNodeRoleMaster]; hasNodeRoleMasterLabel {
+		if _, hasNodeRoleMasterLabel := node.Labels[consts.DeprecatedLabelNodeRoleMaster]; hasNodeRoleMasterLabel {
 			return false
 		}
 

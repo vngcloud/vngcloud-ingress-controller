@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	DEFAULT_HASH_NAME_LENGTH          = 5       // a unique hash name
-	DEFAULT_PORTAL_DESCRIPTION_LENGTH = 255     // All the description must be less than 255 characters
+	DEFAULT_HASH_NAME_LENGTH          = 5     // a unique hash name
+	DEFAULT_PORTAL_DESCRIPTION_LENGTH = 255   // All the description must be less than 255 characters
 	DEFAULT_LB_PREFIX_NAME            = "vks" // "vks" is abbreviated of "cluster"
 	DEFAULT_NAME_DEFAULT_POOL         = "vks_default_pool"
 	DEFAULT_PACKAGE_ID                = "lbp-f562b658-0fd4-4fa6-9c57-c1a803ccbf86"

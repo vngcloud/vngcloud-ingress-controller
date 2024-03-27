@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/listener"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/loadbalancer"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/policy"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
 	"k8s.io/klog/v2"
@@ -44,6 +45,10 @@ type IngressInspect struct {
 	defaultPool *PoolExpander
 	name        string
 	namespace   string
+	lbID        string                   // store the lb id
+	lbName      string                   // auto generate or pass by user through annotation
+	lbPostfix   string                   // a hash id
+	lbOptions   *loadbalancer.CreateOpts // create options for lb
 
 	PolicyExpander      []*PolicyExpander
 	PoolExpander        []*PoolExpander

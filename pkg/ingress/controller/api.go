@@ -5,15 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/coe/v2/cluster"
-	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/certificates"
-	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/listener"
-	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/policy"
-	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
-
 	"github.com/vngcloud/vngcloud-go-sdk/client"
 	lObjects "github.com/vngcloud/vngcloud-go-sdk/vngcloud/objects"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/compute/v2/server"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/certificates"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/listener"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/loadbalancer"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/policy"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
 	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/utils/errors"
 	"k8s.io/klog/v2"
 )
@@ -24,52 +23,70 @@ type API struct {
 	ProjectID string
 }
 
-// COMMON
-func (c *API) GetClusterInfo(clusterID string) (*lObjects.Cluster, error) {
-	// klog.V(5).Infoln("*****API__GetClusterInfo: ", "clusterID: ", clusterID)
-	opts := &cluster.GetOpts{}
-	opts.ProjectID = c.ProjectID
-	opts.ClusterID = clusterID
+// SERVER
+func (c *API) GetServer(id string) (*lObjects.Server, error) {
+	opt := server.NewGetOpts(c.ProjectID, id)
+	resp, err := server.Get(c.VServerSC, opt)
+	if err != nil {
+		return nil, err.Error
+	}
+	return resp, nil
+}
 
-	resp, err := cluster.Get(c.VServerSC, opts)
-	// klog.V(5).Infoln("*****API__GetClusterInfo: ", "resp: ", resp, "err: ", err)
-	return resp, err
+func (c *API) ListProviderID(providerIDs []string) ([]*lObjects.Server, error) {
+	var servers []*lObjects.Server
+	for _, providerID := range providerIDs {
+		server, err := c.GetServer(providerID)
+		if err != nil {
+			return nil, err
+		} else {
+			servers = append(servers, server)
+		}
+	}
+	return servers, nil
 }
 
 // LB
 func (c *API) ListLBBySubnetID(subnetID string) ([]*lObjects.LoadBalancer, error) {
-	// klog.V(5).Infoln("*****API__ListLBBySubnetID: ", "subnetID: ", subnetID)
+	// klog.V(5).Infoln("[API] ListLBBySubnetID: ", "subnetID: ", subnetID)
 	opt := &loadbalancer.ListBySubnetIDOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.SubnetID = subnetID
 
 	resp, err := loadbalancer.ListBySubnetID(c.VLBSC, opt)
-	// klog.V(5).Infoln("*****API__ListLBBySubnetID: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("[API] ListLBBySubnetID: ", "resp: ", resp, "err: ", err)
+	return resp, err
+}
+
+func (c *API) ListLB() ([]*lObjects.LoadBalancer, error) {
+	opt := &loadbalancer.ListOpts{}
+	opt.ProjectID = c.ProjectID
+	resp, err := loadbalancer.List(c.VLBSC, opt)
 	return resp, err
 }
 
 func (c *API) GetLB(lbID string) (*lObjects.LoadBalancer, error) {
-	// klog.V(5).Infoln("*****API__GetLB: ", "lbID: ", lbID)
+	// klog.V(5).Infoln("[API] GetLB: ", "lbID: ", lbID)
 	opt := &loadbalancer.GetOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 
 	resp, err := loadbalancer.Get(c.VLBSC, opt)
-	// klog.V(5).Infoln("*****API__GetLB: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("[API] GetLB: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) CreateLB(lbOptions *loadbalancer.CreateOpts) (*lObjects.LoadBalancer, error) {
-	klog.V(5).Infoln("*****API__CreateLB: ", "name: ", lbOptions.Name, "packageID: ", lbOptions.PackageID, "scheme: ", lbOptions.Scheme, "subnetID: ", lbOptions.SubnetID, "type: ", lbOptions.Type)
+	klog.V(5).Infoln("[API] CreateLB: ", "name: ", lbOptions.Name, "packageID: ", lbOptions.PackageID, "scheme: ", lbOptions.Scheme, "subnetID: ", lbOptions.SubnetID, "type: ", lbOptions.Type)
 	lbOptions.ProjectID = c.ProjectID
 
 	resp, err := loadbalancer.Create(c.VLBSC, lbOptions)
-	klog.V(5).Infoln("*****API__CreateLB: ", "resp: ", resp, "err: ", err)
+	klog.V(5).Infoln("[API] CreateLB: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) DeleteLB(lbID string) error {
-	klog.V(5).Infoln("*****API__DeleteLB: ", "lbID: ", lbID)
+	klog.V(5).Infoln("[API] DeleteLB: ", "lbID: ", lbID)
 	opt := &loadbalancer.DeleteOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
@@ -86,12 +103,12 @@ func (c *API) DeleteLB(lbID string) error {
 		}
 	}
 
-	klog.V(5).Infoln("*****API__DeleteLB: ", "err: ", err)
+	klog.V(5).Infoln("[API] DeleteLB: ", "err: ", err)
 	return err
 }
 
 func (c *API) ResizeLB(lbID, packageID string) error {
-	klog.V(5).Infoln("*****API__ResizeLB: ", "lbID: ", lbID, "packageID: ", packageID)
+	klog.V(5).Infoln("[API] ResizeLB: ", "lbID: ", lbID, "packageID: ", packageID)
 	opt := &loadbalancer.UpdateOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
@@ -108,13 +125,13 @@ func (c *API) ResizeLB(lbID, packageID string) error {
 			break
 		}
 	}
-	klog.V(5).Infoln("*****API__ResizeLB: ", "err: ", err)
+	klog.V(5).Infoln("[API] ResizeLB: ", "err: ", err)
 	return err
 }
 
 // POOL
 func (c *API) CreatePool(lbID string, opt *pool.CreateOpts) (*lObjects.Pool, error) {
-	klog.V(5).Infoln("*****API__CreatePool: ", "lbID: ", lbID)
+	klog.V(5).Infoln("[API] CreatePool: ", "lbID: ", lbID)
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 
@@ -130,23 +147,26 @@ func (c *API) CreatePool(lbID string, opt *pool.CreateOpts) (*lObjects.Pool, err
 			break
 		}
 	}
-	klog.V(5).Infoln("*****API__CreatePool: ", "resp: ", resp, "err: ", err)
+	klog.V(5).Infoln("[API] CreatePool: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) ListPoolOfLB(lbID string) ([]*lObjects.Pool, error) {
-	// klog.V(5).Infoln("*****API__ListPool: ", "lbID: ", lbID)
+	// klog.V(5).Infoln("[API] ListPool: ", "lbID: ", lbID)
 	opt := &pool.ListPoolsBasedLoadBalancerOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 
 	resp, err := pool.ListPoolsBasedLoadBalancer(c.VLBSC, opt)
-	// klog.V(5).Infoln("*****API__ListPool: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("[API] ListPool: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) UpdatePoolMember(lbID, poolID string, mems []*pool.Member) error {
-	klog.V(5).Infoln("*****API__UpdatePoolMember: ", "poolID: ", poolID, "mems: ", mems)
+	klog.V(5).Infoln("[API] UpdatePoolMember: ", "poolID: ", poolID)
+	for _, mem := range mems {
+		klog.V(5).Infof("[%s, %s, %d]", mem.Name, mem.IpAddress, mem.Port)
+	}
 	opt := &pool.UpdatePoolMembersOpts{
 		Members: mems,
 	}
@@ -166,36 +186,36 @@ func (c *API) UpdatePoolMember(lbID, poolID string, mems []*pool.Member) error {
 		}
 	}
 
-	klog.V(5).Infoln("*****API__UpdatePoolMember: ", "err: ", err)
+	// klog.V(5).Infoln("[API] UpdatePoolMember: ", "err: ", err)
 	return err
 }
 
 func (c *API) GetPool(lbID, poolID string) (*lObjects.Pool, error) {
-	// klog.V(5).Infoln("*****API__GetPool: ", "poolID: ", poolID)
+	// klog.V(5).Infoln("[API] GetPool: ", "poolID: ", poolID)
 	opt := &pool.GetOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.PoolID = poolID
 
 	resp, err := pool.GetTotal(c.VLBSC, opt)
-	// klog.V(5).Infoln("*****API__GetPool: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("[API] GetPool: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) GetMemberPool(lbID, poolID string) ([]*lObjects.Member, error) {
-	// klog.V(5).Infoln("*****API__GetMemberPool: ", "poolID: ", poolID)
+	// klog.V(5).Infoln("[API] GetMemberPool: ", "poolID: ", poolID)
 	opt := &pool.GetMemberOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.PoolID = poolID
 
 	resp, err := pool.GetMember(c.VLBSC, opt)
-	// klog.V(5).Infoln("*****API__GetMemberPool: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("[API] GetMemberPool: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) DeletePool(lbID, poolID string) error {
-	klog.V(5).Infoln("*****API__DeletePool: ", "poolID: ", poolID)
+	klog.V(5).Infoln("[API] DeletePool: ", "poolID: ", poolID)
 	opt := &pool.DeleteOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
@@ -212,13 +232,13 @@ func (c *API) DeletePool(lbID, poolID string) error {
 			break
 		}
 	}
-	klog.V(5).Infoln("*****API__DeletePool: ", "err: ", err)
+	klog.V(5).Infoln("[API] DeletePool: ", "err: ", err)
 	return err
 }
 
 func (c *API) UpdatePool(lbID, poolID string, opt *pool.UpdateOpts) error {
-	klog.V(5).Infoln("*****API__UpdatePool: ", "lbID: ", lbID, "poolID: ", poolID)
-	klog.V(5).Infoln("*****API__UpdatePool: ", "opt: ", opt)
+	klog.V(5).Infoln("[API] UpdatePool: ", "lbID: ", lbID, "poolID: ", poolID)
+	klog.V(5).Infoln("[API] UpdatePool: ", "opt: ", opt)
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.PoolID = poolID
@@ -234,13 +254,13 @@ func (c *API) UpdatePool(lbID, poolID string, opt *pool.UpdateOpts) error {
 			break
 		}
 	}
-	klog.V(5).Infoln("*****API__UpdatePool: ", "err: ", err)
+	klog.V(5).Infoln("[API] UpdatePool: ", "err: ", err)
 	return err
 }
 
 // LISTENER
 func (c *API) CreateListener(lbID string, opt *listener.CreateOpts) (*lObjects.Listener, error) {
-	klog.V(5).Infoln("*****API__CreateListener: ", "lbID: ", lbID)
+	klog.V(5).Infoln("[API] CreateListener: ", "lbID: ", lbID)
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 
@@ -256,22 +276,22 @@ func (c *API) CreateListener(lbID string, opt *listener.CreateOpts) (*lObjects.L
 			break
 		}
 	}
-	klog.V(5).Infoln("*****API__CreateListener: ", "resp: ", resp, "err: ", err)
+	klog.V(5).Infoln("[API] CreateListener: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) ListListenerOfLB(lbID string) ([]*lObjects.Listener, error) {
-	// klog.V(5).Infoln("*****API__ListListenerOfLB: ", "lbID: ", lbID)
+	// klog.V(5).Infoln("[API] ListListenerOfLB: ", "lbID: ", lbID)
 	opt := &listener.GetBasedLoadBalancerOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	resp, err := listener.GetBasedLoadBalancer(c.VLBSC, opt)
-	// klog.V(5).Infoln("*****API__ListListenerOfLB: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("[API] ListListenerOfLB: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) DeleteListener(lbID, listenerID string) error {
-	klog.V(5).Infoln("*****API__DeleteListener: ", "lbID: ", lbID, "listenerID: ", listenerID)
+	klog.V(5).Infoln("[API] DeleteListener: ", "lbID: ", lbID, "listenerID: ", listenerID)
 	opt := &listener.DeleteOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
@@ -288,13 +308,13 @@ func (c *API) DeleteListener(lbID, listenerID string) error {
 			break
 		}
 	}
-	klog.V(5).Infoln("*****API__DeleteListener: ", "err: ", err)
+	klog.V(5).Infoln("[API] DeleteListener: ", "err: ", err)
 	return err
 }
 
 func (c *API) UpdateListener(lbID, listenerID string, opt *listener.UpdateOpts) error {
-	klog.V(5).Infoln("*****API__UpdateListener: ", "lbID: ", lbID, "listenerID: ", listenerID)
-	klog.V(5).Infoln("*****API__UpdateListener: ", "opt: ", opt)
+	klog.V(5).Infoln("[API] UpdateListener: ", "lbID: ", lbID, "listenerID: ", listenerID)
+	klog.V(5).Infoln("[API] UpdateListener: ", "opt: ", opt)
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.ListenerID = listenerID
@@ -310,13 +330,13 @@ func (c *API) UpdateListener(lbID, listenerID string, opt *listener.UpdateOpts) 
 			break
 		}
 	}
-	klog.V(5).Infoln("*****API__UpdateListener: ", "err: ", err)
+	klog.V(5).Infoln("[API] UpdateListener: ", "err: ", err)
 	return err
 }
 
 // POLICY
 func (c *API) CreatePolicy(lbID, listenerID string, opt *policy.CreateOptsBuilder) (*lObjects.Policy, error) {
-	klog.V(5).Infoln("*****API__CreatePolicy: ", "lbID: ", lbID, "listenerID: ", listenerID, "opt: ", opt)
+	klog.V(5).Infoln("[API] CreatePolicy: ", "lbID: ", lbID, "listenerID: ", listenerID, "opt: ", opt)
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.ListenerID = listenerID
@@ -333,35 +353,35 @@ func (c *API) CreatePolicy(lbID, listenerID string, opt *policy.CreateOptsBuilde
 			break
 		}
 	}
-	klog.V(5).Infoln("*****API__CreatePolicy: ", "resp: ", resp, "err: ", err)
+	klog.V(5).Infoln("[API] CreatePolicy: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) ListPolicyOfListener(lbID, listenerID string) ([]*lObjects.Policy, error) {
-	// klog.V(5).Infoln("*****API__ListPolicyOfListener: ", "lbID: ", lbID, "listenerID: ", listenerID)
+	// klog.V(5).Infoln("[API] ListPolicyOfListener: ", "lbID: ", lbID, "listenerID: ", listenerID)
 	opt := &policy.ListOptsBuilder{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.ListenerID = listenerID
 	resp, err := policy.List(c.VLBSC, opt)
-	// klog.V(5).Infoln("*****API__ListPolicyOfListener: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("[API] ListPolicyOfListener: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) GetPolicy(lbID, listenerID, policyID string) (*lObjects.Policy, error) {
-	// klog.V(5).Infoln("*****API__GetPolicy: ", "lbID: ", lbID, "listenerID: ", listenerID, "policyID: ", policyID)
+	// klog.V(5).Infoln("[API] GetPolicy: ", "lbID: ", lbID, "listenerID: ", listenerID, "policyID: ", policyID)
 	opt := &policy.GetOptsBuilder{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.ListenerID = listenerID
 	opt.PolicyID = policyID
 	resp, err := policy.Get(c.VLBSC, opt)
-	// klog.V(5).Infoln("*****API__GetPolicy: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("[API] GetPolicy: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) UpdatePolicy(lbID, listenerID, policyID string, opt *policy.UpdateOptsBuilder) error {
-	klog.V(5).Infoln("*****API__UpdatePolicy: ", "lbID: ", lbID, "listenerID: ", listenerID, "policyID: ", policyID)
+	klog.V(5).Infoln("[API] UpdatePolicy: ", "lbID: ", lbID, "listenerID: ", listenerID, "policyID: ", policyID)
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.ListenerID = listenerID
@@ -378,12 +398,12 @@ func (c *API) UpdatePolicy(lbID, listenerID, policyID string, opt *policy.Update
 			break
 		}
 	}
-	klog.V(5).Infoln("*****API__UpdatePolicy: ", "err: ", err)
+	klog.V(5).Infoln("[API] UpdatePolicy: ", "err: ", err)
 	return err
 }
 
 func (c *API) DeletePolicy(lbID, listenerID, policyID string) error {
-	klog.V(5).Infoln("*****API__DeletePolicy: ", "lbID: ", lbID, "listenerID: ", listenerID, "policyID: ", policyID)
+	klog.V(5).Infoln("[API] DeletePolicy: ", "lbID: ", lbID, "listenerID: ", listenerID, "policyID: ", policyID)
 	opt := &policy.DeleteOptsBuilder{}
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
@@ -401,45 +421,45 @@ func (c *API) DeletePolicy(lbID, listenerID, policyID string) error {
 			break
 		}
 	}
-	klog.V(5).Infoln("*****API__DeletePolicy: ", "err: ", err)
+	klog.V(5).Infoln("[API] DeletePolicy: ", "err: ", err)
 	return err
 }
 
 // CERTIFICATE
 func (c *API) ImportCertificate(opt *certificates.ImportOpts) (*lObjects.Certificate, error) {
-	klog.V(5).Infoln("*****API__ImportCertificate: ", "opt: ", opt)
+	klog.V(5).Infoln("[API] ImportCertificate: ", "opt: ", opt)
 	opt.ProjectID = c.ProjectID
 	resp, err := certificates.Import(c.VLBSC, opt)
-	klog.V(5).Infoln("*****API__ImportCertificate: ", "resp: ", resp, "err: ", err)
+	klog.V(5).Infoln("[API] ImportCertificate: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) ListCertificate() ([]*lObjects.Certificate, error) {
-	// klog.V(5).Infoln("*****API__ListCertificate: ")
+	// klog.V(5).Infoln("[API] ListCertificate: ")
 	opt := &certificates.ListOpts{}
 	opt.ProjectID = c.ProjectID
 	resp, err := certificates.List(c.VLBSC, opt)
-	// klog.V(5).Infoln("*****API__ListCertificate: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("[API] ListCertificate: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) GetCertificate(certificateID string) (*lObjects.Certificate, error) {
-	klog.V(5).Infoln("*****API__GetCertificate: ", "certificateID: ", certificateID)
+	klog.V(5).Infoln("[API] GetCertificate: ", "certificateID: ", certificateID)
 	opt := &certificates.GetOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.CaID = certificateID
 	resp, err := certificates.Get(c.VLBSC, opt)
-	klog.V(5).Infoln("*****API__GetCertificate: ", "resp: ", resp, "err: ", err)
+	klog.V(5).Infoln("[API] GetCertificate: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
 func (c *API) DeleteCertificate(certificateID string) error {
-	klog.V(5).Infoln("*****API__DeleteCertificate: ", "certificateID: ", certificateID)
+	klog.V(5).Infoln("[API] DeleteCertificate: ", "certificateID: ", certificateID)
 	opt := &certificates.DeleteOpts{}
 	opt.ProjectID = c.ProjectID
 	opt.CaID = certificateID
 	err := certificates.Delete(c.VLBSC, opt)
-	klog.V(5).Infoln("*****API__DeleteCertificate: ", "err: ", err)
+	klog.V(5).Infoln("[API] DeleteCertificate: ", "err: ", err)
 	return err
 }
 

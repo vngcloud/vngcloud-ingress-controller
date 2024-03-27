@@ -41,10 +41,6 @@ import (
 func IsValid(ing *nwv1.Ingress) bool {
 	ingress, ok := ing.GetAnnotations()[IngressKey]
 	if !ok {
-		log.WithFields(log.Fields{
-			"ingress_name": ing.Name, "ingress_ns": ing.Namespace,
-		}).Info("annotation not present in ingress")
-
 		// check in spec
 		if ing.Spec.IngressClassName != nil {
 			return *ing.Spec.IngressClassName == IngressClass
@@ -265,17 +261,14 @@ func comparePoolDefaultMember(memsGet []*lObjects.Member, oldMembers, newMembers
 	needDelete := getRedundant(oldMembers, newMembers)
 	needCreate := newMembers // need ensure
 
-	klog.Infof("memGets: %v", memsGet)
 	for _, m := range memsGetConvert {
-		klog.V(5).Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
+		klog.V(5).Infof("current: [ %s, %s, %d ]", m.Name, m.IpAddress, m.Port)
 	}
-	klog.Infof("needDelete: %v", needDelete)
 	for _, m := range needDelete {
-		klog.V(5).Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
+		klog.V(5).Infof("delete : [ %s, %s, %d ]", m.Name, m.IpAddress, m.Port)
 	}
-	klog.Infof("needCreate: %v", needCreate)
 	for _, m := range needCreate {
-		klog.V(5).Infof("-----: %s, %s, %d", m.Name, m.IpAddress, m.Port)
+		klog.V(5).Infof("create : [ %s, %s, %d ]", m.Name, m.IpAddress, m.Port)
 	}
 
 	updateMember := make([]*pool.Member, 0)

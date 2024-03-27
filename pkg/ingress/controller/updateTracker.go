@@ -76,5 +76,8 @@ func (c *UpdateTracker) GetReapplyIngress(lbs []*objects.LoadBalancer) []string 
 			delete(c.tracker, key)
 		}
 	}
+	if len(reapplyIngress) == 0 {
+		klog.V(3).Infof("Nothing change.")
+	}
 	return reapplyIngress
 }

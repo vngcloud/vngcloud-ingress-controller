@@ -112,9 +112,6 @@ func initConfig() {
 	if err := viper.Unmarshal(&conf); err != nil {
 		log.WithFields(log.Fields{"error": err}).Fatal("Unable to decode the configuration")
 	}
-	if conf.ClusterID == "" {
-		log.Fatal("clusterID configuration is required")
-	}
 
 	if isDebug {
 		log.SetLevel(log.DebugLevel)

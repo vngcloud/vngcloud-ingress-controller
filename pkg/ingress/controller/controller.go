@@ -16,6 +16,7 @@ import (
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/identity/v2/tokens"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/certificates"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/listener"
+	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/loadbalancer"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/policy"
 	"github.com/vngcloud/vngcloud-go-sdk/vngcloud/services/loadbalancer/v2/pool"
 	"github.com/vngcloud/vngcloud-ingress-controller/pkg/ingress/config"
@@ -25,7 +26,6 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	nwv1 "k8s.io/api/networking/v1"
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
@@ -71,7 +71,6 @@ type Controller struct {
 	provider  *vconSdkClient.ProviderClient
 	vLBSC     *vconSdkClient.ServiceClient
 	vServerSC *vconSdkClient.ServiceClient
-	cluster   *lObjects.Cluster
 	extraInfo *ExtraInfo
 	api       API
 
@@ -281,7 +280,7 @@ func (c *Controller) nodeSyncLoop() {
 		klog.Infof("Detected change in secret tracker")
 	}
 
-	lbs, err := c.api.ListLBBySubnetID(c.getSubnetID())
+	lbs, err := c.api.ListLB()
 	if err != nil {
 		klog.Errorf("Failed to retrieve current set of load balancers: %v", err)
 		return
@@ -419,40 +418,23 @@ func (c *Controller) ensureIngress(oldIng, ing *nwv1.Ingress) error {
 		return err
 	}
 	c.trackLBUpdate.AddUpdateTracker(lb.UUID, fmt.Sprintf("%s/%s", ing.Namespace, ing.Name), lb.UpdatedAt)
-	vip := lb.Address
-	newIng, err := c.updateIngressStatus(ing, vip)
+	_, err = c.updateIngressStatus(ing, lb)
 	if err != nil {
 		return err
 	}
-	c.recorder.Event(ing, apiv1.EventTypeNormal, "Updated", fmt.Sprintf("Successfully associated IP address %s to ingress %s", vip, newIng.Name))
 	return nil
 }
 
-// for vLB callback
-
-func (c *Controller) getNodeMembersAddr() ([]string, error) {
-	nodeObjs, err := listWithPredicate(c.nodeLister, getNodeConditionPredicate())
-	if err != nil {
-		klog.Errorf("Failed to retrieve current set of nodes from node lister: %v", err)
-		return nil, err
-	}
-	var updateMemberOpts []string
-	for _, node := range nodeObjs {
-		addr, err := getNodeAddressForLB(node)
-		if err != nil {
-			// Node failure, do not create member
-			logrus.WithFields(logrus.Fields{"node": node.Name, "error": err}).Warn("failed to get node address")
-			continue
-		}
-		updateMemberOpts = append(updateMemberOpts, addr)
-	}
-	return updateMemberOpts, nil
-}
-
-func (c *Controller) updateIngressStatus(ing *nwv1.Ingress, vip string) (*nwv1.Ingress, error) {
+func (c *Controller) updateIngressStatus(ing *nwv1.Ingress, lb *lObjects.LoadBalancer) (*nwv1.Ingress, error) {
 	klog.Infoln("------------ updateIngressStatus() ------------")
+	if ing.ObjectMeta.Annotations == nil {
+		ing.ObjectMeta.Annotations = map[string]string{}
+	}
+	ing.ObjectMeta.Annotations[ServiceAnnotationLoadBalancerID] = lb.UUID
+	ing.ObjectMeta.Annotations[ServiceAnnotationLoadBalancerName] = lb.Name
+
 	newState := new(nwv1.IngressLoadBalancerStatus)
-	newState.Ingress = []nwv1.IngressLoadBalancerIngress{{IP: vip}}
+	newState.Ingress = []nwv1.IngressLoadBalancerIngress{{IP: lb.Address}}
 	newIng := ing.DeepCopy()
 	newIng.Status.LoadBalancer = *newState
 
@@ -460,63 +442,8 @@ func (c *Controller) updateIngressStatus(ing *nwv1.Ingress, vip string) (*nwv1.I
 	if err != nil {
 		return nil, err
 	}
-
+	c.recorder.Event(ing, apiv1.EventTypeNormal, "Updated", fmt.Sprintf("Successfully associated IP address %s to ingress %s", lb.Address, newIng.Name))
 	return newObj, nil
-}
-
-func (c *Controller) getService(key string) (*apiv1.Service, error) {
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		return nil, err
-	}
-
-	service, err := c.serviceLister.Services(namespace).Get(name)
-	if err != nil {
-		return nil, err
-	}
-
-	return service, nil
-}
-
-func (c *Controller) getServiceNodePort(name string, serviceBackend *nwv1.IngressServiceBackend) (int, error) {
-	var portInfo intstr.IntOrString
-	if serviceBackend.Port.Name != "" {
-		portInfo.Type = intstr.String
-		portInfo.StrVal = serviceBackend.Port.Name
-	} else {
-		portInfo.Type = intstr.Int
-		portInfo.IntVal = serviceBackend.Port.Number
-	}
-
-	logger := logrus.WithFields(logrus.Fields{"service": name, "port": portInfo.String()})
-
-	logger.Debug("getting service nodeport")
-
-	svc, err := c.getService(name)
-	if err != nil {
-		return 0, err
-	}
-
-	var nodePort int
-	ports := svc.Spec.Ports
-	for _, p := range ports {
-		if portInfo.Type == intstr.Int && int(p.Port) == portInfo.IntValue() {
-			nodePort = int(p.NodePort)
-			break
-		}
-		if portInfo.Type == intstr.String && p.Name == portInfo.StrVal {
-			nodePort = int(p.NodePort)
-			break
-		}
-	}
-
-	if nodePort == 0 {
-		return 0, fmt.Errorf("failed to find nodeport for service %s:%s", name, portInfo.String())
-	}
-
-	logger.Debug("found service nodeport")
-
-	return nodePort, nil
 }
 
 ///////////////////////////////////////////////////////////////////
@@ -583,12 +510,6 @@ func (c *Controller) Init() error {
 		VServerSC: c.vServerSC,
 		ProjectID: c.getProjectID(),
 	}
-	c.cluster, err = c.api.GetClusterInfo(c.config.ClusterID)
-	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"error": err,
-		}).Fatal("failed to get cluster info")
-	}
 
 	return nil
 }
@@ -610,7 +531,7 @@ func (c *Controller) setUpPortalInfo() {
 
 func (c *Controller) GetLoadbalancerIDByIngress(ing *nwv1.Ingress) (string, error) {
 	klog.Infof("----------------- GetLoadbalancerIDByIngress(%s/%s) ------------------", ing.Namespace, ing.Name)
-	lbsInSubnet, err := c.api.ListLBBySubnetID(c.getSubnetID())
+	lbsInSubnet, err := c.api.ListLB()
 	if err != nil {
 		klog.Errorf("error when list lb by subnet id: %v", err)
 		return "", err
@@ -618,10 +539,8 @@ func (c *Controller) GetLoadbalancerIDByIngress(ing *nwv1.Ingress) (string, erro
 
 	// check in annotation lb id
 	if lbID, ok := ing.Annotations[ServiceAnnotationLoadBalancerID]; ok {
-		klog.Infof("have annotation lbID: %s", lbID)
 		for _, lb := range lbsInSubnet {
 			if lb.UUID == lbID {
-				klog.Infof("found lbID: %s", lbID)
 				return lb.UUID, nil
 			}
 		}
@@ -631,25 +550,13 @@ func (c *Controller) GetLoadbalancerIDByIngress(ing *nwv1.Ingress) (string, erro
 
 	// check in annotation lb name
 	if lbName, ok := ing.Annotations[ServiceAnnotationLoadBalancerName]; ok {
-		klog.Infof("have annotation lbName: %s", lbName)
 		for _, lb := range lbsInSubnet {
 			if lb.Name == lbName {
-				klog.Infof("found lbName: %s", lbName)
 				return lb.UUID, nil
 			}
 		}
 		klog.Errorf("have annotation but not found lbName: %s", lbName)
 		return "", vErrors.ErrLoadBalancerNameNotFoundAnnotation
-	} else {
-		// check in list lb name
-		lbName := GetResourceName(ing, c.getClusterID())
-		for _, lb := range lbsInSubnet {
-			if lb.Name == lbName {
-				klog.Infof("Found lb match Name: %s", lbName)
-				return lb.UUID, nil
-			}
-		}
-		klog.Infof("Not found lb match Name: %s", lbName)
 	}
 
 	return "", vErrors.ErrNotFound
@@ -801,14 +708,67 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 		}, nil
 	}
 	klog.Infof("----------------- inspectIngress(%s/%s) ------------------", ing.Namespace, ing.Name)
-	lb_prefix_name := TrimString(GetResourceHashName(ing, c.getClusterID()), DEFAULT_HASH_NAME_LENGTH)
+	ingressInspect := &IngressInspect{
+		name:      ing.Name,
+		namespace: ing.Namespace,
+		defaultPool: &PoolExpander{
+			UUID: "",
+		},
+		lbID:                "",
+		lbName:              "",
+		lbPostfix:           "",
+		lbOptions:           CreateLoadbalancerOptions(ing),
+		PolicyExpander:      make([]*PolicyExpander, 0),
+		PoolExpander:        make([]*PoolExpander, 0),
+		ListenerExpander:    make([]*ListenerExpander, 0),
+		CertificateExpander: make([]*CertificateExpander, 0),
+	}
+
+	// check in annotation
+	if lbID, ok := ing.Annotations[ServiceAnnotationLoadBalancerID]; ok {
+		ingressInspect.lbID = lbID
+	}
+	if lbName, ok := ing.Annotations[ServiceAnnotationLoadBalancerName]; ok {
+		ingressInspect.lbName = lbName
+	} else {
+		ingressInspect.lbName = generateLBName(ing)
+	}
+	ingressInspect.lbPostfix = TrimString(HashString(ingressInspect.lbName), DEFAULT_HASH_NAME_LENGTH)
+	ingressInspect.lbOptions.Name = ingressInspect.lbName
+
+	nodeObjs, err := listWithPredicate(c.nodeLister, getNodeConditionPredicate())
+	if len(nodeObjs) < 1 {
+		klog.Errorf("No nodes found in the cluster")
+		return nil, vErrors.ErrNoNodeAvailable
+	}
+	if err != nil {
+		klog.Errorf("Failed to retrieve current set of nodes from node lister: %v", err)
+		return nil, err
+	}
+	membersAddr := getNodeMembersAddr(nodeObjs)
+
+	// get subnetID of this ingress
+	providerIDs := GetListProviderID(nodeObjs)
+	if len(providerIDs) < 1 {
+		klog.Errorf("No nodes found in the cluster")
+		return nil, vErrors.ErrNoNodeAvailable
+	}
+	klog.Infof("Found %d nodes for service, including of %v", len(providerIDs), providerIDs)
+	servers, err := c.api.ListProviderID(providerIDs)
+	if err != nil {
+		klog.Errorf("Failed to get servers from the cloud - ERROR: %v", err)
+		return nil, err
+	}
+
+	// Check the nodes are in the same subnet
+	subnetID, retErr := ensureNodesInCluster(servers)
+	if retErr != nil {
+		klog.Errorf("All node are not in a same subnet: %v", retErr)
+		return nil, retErr
+	}
+	ingressInspect.lbOptions.SubnetID = subnetID
+
 	mapTLS, certArr := c.mapHostTLS(ing)
-
-	expectPolicyName := make([]*PolicyExpander, 0)
-	expectPoolName := make([]*PoolExpander, 0)
-	expectListenerName := make([]*ListenerExpander, 0)
-	expectCertificateName := make([]*CertificateExpander, 0)
-
 	// convert to vngcloud certificate
 	for _, tls := range ing.Spec.TLS {
 		// check if certificate already exist
@@ -818,9 +778,9 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 			return nil, err
 		}
 		version := secret.ObjectMeta.ResourceVersion
-		name := GetCertificateName(c.getClusterID(), ing.Namespace, tls.SecretName)
+		name := GetCertificateName(ing.Namespace, tls.SecretName)
 		secretName := tls.SecretName
-		expectCertificateName = append(expectCertificateName, &CertificateExpander{
+		ingressInspect.CertificateExpander = append(ingressInspect.CertificateExpander, &CertificateExpander{
 			Name:       name,
 			Version:    version,
 			SecretName: secretName,
@@ -830,14 +790,13 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 
 	GetPoolExpander := func(service *nwv1.IngressServiceBackend) (*PoolExpander, error) {
 		serviceName := fmt.Sprintf("%s/%s", ing.ObjectMeta.Namespace, service.Name)
-		poolName := GetPoolName(lb_prefix_name, serviceName, int(service.Port.Number))
-		nodePort, err := c.getServiceNodePort(serviceName, service)
+		poolName := GetPoolName(ingressInspect.lbPostfix, serviceName, int(service.Port.Number))
+		nodePort, err := getServiceNodePort(c.serviceLister, serviceName, service)
 		if err != nil {
 			klog.Errorf("error when get node port: %v", err)
 			return nil, err
 		}
 
-		membersAddr, _ := c.getNodeMembersAddr()
 		members := make([]*pool.Member, 0)
 		for _, addr := range membersAddr {
 			members = append(members, &pool.Member{
@@ -856,14 +815,6 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 			UUID:       "",
 			CreateOpts: *poolOptions,
 		}, nil
-	}
-
-	ingressInspect := &IngressInspect{
-		name:      ing.Name,
-		namespace: ing.Namespace,
-		defaultPool: &PoolExpander{
-			UUID: "",
-		},
 	}
 
 	// check if have default pool
@@ -887,12 +838,12 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 			listenerHttpsOpts.CertificateAuthorities = &certArr
 			listenerHttpsOpts.DefaultCertificateAuthority = &certArr[0]
 			listenerHttpsOpts.ClientCertificate = PointerOf[string]("")
-			expectListenerName = append(expectListenerName, &ListenerExpander{
+			ingressInspect.ListenerExpander = append(ingressInspect.ListenerExpander, &ListenerExpander{
 				CreateOpts: *listenerHttpsOpts,
 			})
 		}
 
-		expectListenerName = append(expectListenerName, &ListenerExpander{
+		ingressInspect.ListenerExpander = append(ingressInspect.ListenerExpander, &ListenerExpander{
 			CreateOpts: *(CreateListenerOptions(ing, false)),
 		})
 	}
@@ -902,14 +853,14 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 		_, isHttpsListener := mapTLS[rule.Host]
 
 		for pathIndex, path := range rule.HTTP.Paths {
-			policyName := GetPolicyName(lb_prefix_name, isHttpsListener, ruleIndex, pathIndex)
+			policyName := GetPolicyName(ingressInspect.lbPostfix, isHttpsListener, ruleIndex, pathIndex)
 
 			poolExpander, err := GetPoolExpander(path.Backend.Service)
 			if err != nil {
 				klog.Errorln("error when get pool expander:", err)
 				return nil, err
 			}
-			expectPoolName = append(expectPoolName, poolExpander)
+			ingressInspect.PoolExpander = append(ingressInspect.PoolExpander, poolExpander)
 
 			// ensure policy
 			compareType := policy.PolicyOptsCompareTypeOptEQUALS
@@ -930,7 +881,7 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 					RuleValue:   rule.Host,
 				})
 			}
-			expectPolicyName = append(expectPolicyName, &PolicyExpander{
+			ingressInspect.PolicyExpander = append(ingressInspect.PolicyExpander, &PolicyExpander{
 				isHttpsListener:  isHttpsListener,
 				isInUse:          false,
 				UUID:             "",
@@ -942,10 +893,6 @@ func (c *Controller) inspectIngress(ing *nwv1.Ingress) (*IngressInspect, error) 
 			})
 		}
 	}
-	ingressInspect.PolicyExpander = expectPolicyName
-	ingressInspect.PoolExpander = expectPoolName
-	ingressInspect.ListenerExpander = expectListenerName
-	ingressInspect.CertificateExpander = expectCertificateName
 	return ingressInspect, nil
 }
 
@@ -967,7 +914,11 @@ func (c *Controller) ensureCompareIngress(oldIng, ing *nwv1.Ingress) (*lObjects.
 		return nil, err
 	}
 
-	lbID, err := c.ensureLoadBalancer(ing)
+	lbID, _ := c.GetLoadbalancerIDByIngress(ing)
+	if lbID != "" {
+		newIngExpander.lbID = lbID
+	}
+	lbID, err = c.ensureLoadBalancer(newIngExpander)
 	if err != nil {
 		klog.Errorln("error when ensure loadbalancer", err)
 		return nil, err
@@ -982,62 +933,43 @@ func (c *Controller) ensureCompareIngress(oldIng, ing *nwv1.Ingress) (*lObjects.
 }
 
 // find or create lb
-func (c *Controller) ensureLoadBalancer(ing *nwv1.Ingress) (string, error) {
-	lbID, err := c.GetLoadbalancerIDByIngress(ing)
-	if err != nil {
-		switch err {
-		case vErrors.ErrLoadBalancerIDNotFoundAnnotation:
-			klog.Warningf("Annotation %s not found value", ServiceAnnotationLoadBalancerID)
+func (c *Controller) ensureLoadBalancer(inspect *IngressInspect) (string, error) {
+	if inspect.lbID == "" {
+		klog.Infof("--------------- create new lb for ingress %s/%s -------------------", inspect.namespace, inspect.name)
+		lb, err := c.api.CreateLB(inspect.lbOptions)
+		if err != nil {
+			klog.Errorf("error when create new lb: %v", err)
 			return "", err
-		case vErrors.ErrLoadBalancerNameNotFoundAnnotation:
-			klog.Warningf("Annotation %s not found value", ServiceAnnotationLoadBalancerName)
-			return "", err
-		case vErrors.ErrNotFound:
-			klog.Infof("--------------- create new lb for ingress %s/%s -------------------", ing.Namespace, ing.Name)
-			lbOptions := CreateLoadbalancerOptions(ing)
-			if lbOptions.Name == "" {
-				lbOptions.Name = GetResourceName(ing, c.getClusterID())
-			}
-			lbOptions.SubnetID = c.getSubnetID()
-
-			lb, err := c.api.CreateLB(lbOptions)
-			if err != nil {
-				klog.Errorf("error when create new lb: %v", err)
-				return "", err
-			}
-			lbID = lb.UUID
-			c.api.WaitForLBActive(lbID)
-		default:
-			klog.Errorln("error when get lb id by ingress", err)
-			return "", fmt.Errorf("error when ensureLoadBalancer: %v", err)
 		}
+		inspect.lbID = lb.UUID
+		c.api.WaitForLBActive(inspect.lbID)
 	}
 
-	lb, err := c.api.GetLB(lbID)
+	lb, err := c.api.GetLB(inspect.lbID)
 	if err != nil {
 		klog.Errorf("error when get lb: %v", err)
-		return lbID, err
+		return inspect.lbID, err
 	}
 
-	ensureAnnotation := func() {
-		if lbName, ok := ing.Annotations[ServiceAnnotationLoadBalancerName]; ok && lb.Name != lbName {
-			klog.Warningf("Annotation %s not match, only meaning when create new load-balancer", ServiceAnnotationLoadBalancerName)
+	checkDetailLB := func() {
+		if lb.Name != inspect.lbName {
+			klog.Warningf("Load balancer name (%s) not match ID (%s)", lb.Name, inspect.lbName)
 		}
-		if packageID, ok := ing.Annotations[ServiceAnnotationPackageID]; ok && lb.PackageID != packageID {
-			klog.Info("Resize load-balancer package to match annotation: ", packageID)
-			err := c.api.ResizeLB(lbID, packageID)
+		if lb.PackageID != inspect.lbOptions.PackageID {
+			klog.Info("Resize load-balancer package to: ", inspect.lbOptions.PackageID)
+			err := c.api.ResizeLB(inspect.lbID, inspect.lbOptions.PackageID)
 			if err != nil {
 				klog.Errorf("error when resize lb: %v", err)
 				return
 			}
-			c.api.WaitForLBActive(lbID)
+			c.api.WaitForLBActive(inspect.lbID)
 		}
-		if option, ok := ing.Annotations[ServiceAnnotationLoadBalancerInternal]; ok && lb.Internal != (option == "true") {
+		if lb.Internal != (inspect.lbOptions.Scheme == loadbalancer.CreateOptsSchemeOptInternal) {
 			klog.Warningf("Annotation %s not match, only meaning when create new load-balancer", ServiceAnnotationLoadBalancerInternal)
 		}
 	}
-	ensureAnnotation()
-	return lbID, nil
+	checkDetailLB()
+	return inspect.lbID, nil
 }
 
 func (c *Controller) actionCompareIngress(lbID string, oldIngExpander, newIngExpander *IngressInspect) (*lObjects.LoadBalancer, error) {
@@ -1445,14 +1377,6 @@ func (c *Controller) deletePolicy(lbID, listenerID, policyName string) (*lObject
 
 func (c *Controller) getProjectID() string {
 	return c.extraInfo.ProjectID
-}
-
-func (c *Controller) getClusterID() string {
-	return c.config.ClusterID
-}
-
-func (c *Controller) getSubnetID() string {
-	return c.cluster.SubnetID
 }
 
 func (c *Controller) toVngCloudCertificate(secretName string, namespace string, generateName string) (*certificates.ImportOpts, error) {

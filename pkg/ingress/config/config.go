@@ -23,7 +23,6 @@ import (
 
 // Config struct contains ingress controller configuration
 type Config struct {
-	ClusterID  string          `mapstructure:"clusterID"`
 	Kubernetes kubeConfig      `mapstructure:"kubernetes"`
 	Global     client.AuthOpts `mapstructure:"global"`
 	Metadata   metadata.Opts   `mapstructure:"metadata"`

@@ -147,7 +147,7 @@ func (c *API) CreatePool(lbID string, opt *pool.CreateOpts) (*lObjects.Pool, err
 			break
 		}
 	}
-	klog.V(5).Infoln("[API] CreatePool: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("[API] CreatePool: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 
@@ -336,7 +336,7 @@ func (c *API) UpdateListener(lbID, listenerID string, opt *listener.UpdateOpts) 
 
 // POLICY
 func (c *API) CreatePolicy(lbID, listenerID string, opt *policy.CreateOptsBuilder) (*lObjects.Policy, error) {
-	klog.V(5).Infoln("[API] CreatePolicy: ", "lbID: ", lbID, "listenerID: ", listenerID, "opt: ", opt)
+	klog.V(5).Infoln("[API] CreatePolicy: ", "lbID: ", lbID, "listenerID: ", listenerID)
 	opt.ProjectID = c.ProjectID
 	opt.LoadBalancerID = lbID
 	opt.ListenerID = listenerID
@@ -353,7 +353,7 @@ func (c *API) CreatePolicy(lbID, listenerID string, opt *policy.CreateOptsBuilde
 			break
 		}
 	}
-	klog.V(5).Infoln("[API] CreatePolicy: ", "resp: ", resp, "err: ", err)
+	// klog.V(5).Infoln("[API] CreatePolicy: ", "resp: ", resp, "err: ", err)
 	return resp, err
 }
 

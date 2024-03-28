@@ -19,6 +19,7 @@ import (
 	nwv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	nwlisters "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 )
@@ -71,44 +72,6 @@ func stringSlicesEqual(x, y []string) bool {
 		}
 	}
 	return true
-}
-
-func GetResourceHashName(ing *nwv1.Ingress, clusterID string) string {
-	fullName := fmt.Sprintf("%s_%s_%s", clusterID, ing.Namespace, ing.Name)
-	hash := HashString(fullName)
-	return hash
-}
-
-func generateLBName(ing *nwv1.Ingress) string {
-	name := fmt.Sprintf("%s-%s", ing.Namespace, ing.Name)
-	hashStr := RandStr(consts.DEFAULT_HASH_NAME_LENGTH)
-	tmp := fmt.Sprintf("%s-%s-%s", consts.DEFAULT_LB_PREFIX_NAME, name, hashStr)
-	return validateName(tmp)
-}
-
-func generatePolicyName(prefix string, mode bool, ruleIndex, pathIndex int) string {
-	name := fmt.Sprintf("%s_%s_%t_r%d_p%d", consts.DEFAULT_LB_PREFIX_NAME, prefix, mode, ruleIndex, pathIndex)
-	return validateName(name)
-}
-
-func generatePoolName(prefix, serviceName string, port int) string {
-	name := fmt.Sprintf("%s_%s_%s_%d",
-		consts.DEFAULT_LB_PREFIX_NAME,
-		prefix,
-		TrimString(strings.ReplaceAll(serviceName, "/", "-"), 35),
-		port)
-	return validateName(name)
-}
-
-func generateCertificateName(namespace, name string) string {
-	fullName := fmt.Sprintf("%s-%s", namespace, name)
-	hashName := HashString(fullName)
-	newName := fmt.Sprintf("%s-%s-%s-%s-",
-		consts.DEFAULT_LB_PREFIX_NAME,
-		TrimString(namespace, 10),
-		TrimString(name, 10),
-		TrimString(hashName, consts.DEFAULT_HASH_NAME_LENGTH))
-	return validateName(newName)
 }
 
 func validateName(newName string) string {
@@ -215,6 +178,19 @@ func getNodeMembersAddr(nodeObjs []*apiv1.Node) []string {
 		nodeAddr = append(nodeAddr, addr)
 	}
 	return nodeAddr
+}
+
+func getIngress(ingressLister nwlisters.IngressLister, key string) (*nwv1.Ingress, error) {
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		return nil, err
+	}
+
+	ingress, err := ingressLister.Ingresses(namespace).Get(name)
+	if err != nil {
+		return nil, err
+	}
+	return ingress, nil
 }
 
 func getService(serviceLister corelisters.ServiceLister, key string) (*apiv1.Service, error) {

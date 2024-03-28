@@ -51,4 +51,5 @@ var (
 	ErrServerObjectIsNil                  = errors.New("server object is nil")
 	ErrVngCloudNotReturnNilPoolObject     = errors.New("VNG CLOUD should not return nil pool object")
 	ErrVngCloudNotReturnNilListenerObject = errors.New("VNG CLOUD should not return nil listener object")
+	ErrIngressNotFound                    = errors.New("failed to find ingress")
 )

@@ -29,7 +29,7 @@ TAR_FILE	?= rootfs.tar
 GOOS		?= $(shell go env GOOS)
 GOPROXY		?= $(shell go env GOPROXY)
 # VERSION         ?= $(shell git describe --dirty --tags --match='v*')
-VERSION         := v0.1.0
+VERSION         := v0.2.0
 GOARCH		:=
 GOFLAGS		:=
 TAGS		:=
@@ -148,9 +148,10 @@ build-local-image-%:
 		--tag $(REGISTRY)/$*:$(VERSION) \
 		--target $* \
 		.
+	$(CONTAINER_ENGINE) image push $(REGISTRY)/$(IMAGE_NAMES):$(VERSION)
 
 # Build all images locally
-build-local-images: $(addprefix build-image-,$(IMAGE_NAMES))
+build-local-images: $(addprefix build-local-image-,$(IMAGE_NAMES))
 
 # Build a single image for all architectures in ARCHS and push it to REGISTRY
 push-multiarch-image-%:

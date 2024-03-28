@@ -439,7 +439,7 @@ func (c *Controller) updateIngressStatus(ing *nwv1.Ingress, lb *lObjects.LoadBal
 	if latestIngress.ObjectMeta.Annotations == nil {
 		latestIngress.ObjectMeta.Annotations = map[string]string{}
 	}
-	latestIngress.ObjectMeta.Annotations[consts.ServiceAnnotationLoadBalancerID] = lb.UUID
+	// latestIngress.ObjectMeta.Annotations[consts.ServiceAnnotationLoadBalancerID] = lb.UUID
 	latestIngress.ObjectMeta.Annotations[consts.ServiceAnnotationLoadBalancerName] = lb.Name
 
 	newIng := latestIngress.DeepCopy()
